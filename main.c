@@ -20,7 +20,7 @@
 #define SCREEN_HEIGHT 272
 
 #define COLOR_BYTES_COUNT 4
-#define MAX_PROJECTION_DEPTH 300.0f
+#define MAX_PROJECTION_DEPTH 800.0f
 #define ATOMIC_POV_COUNT 36
 #define SPACE_SIZE 256
 #define RAY_STEP 8
@@ -132,8 +132,8 @@ void getView(u32* const frame, u8* const zpos, u32* const base) {
             const int _y = (y - WIN_HEIGHT_D2) * s;
         
             if(_x >= -WIN_WIDTH_D2 && _x < WIN_WIDTH_D2 && _y >= -WIN_HEIGHT_D2 && _y < WIN_HEIGHT_D2) {                
-                const u32 __x = (_x + WIN_WIDTH_D2);
-                const u32 __y = (_y + WIN_HEIGHT_D2);
+                const u32 __x = (_x + WIN_WIDTH_D2 - 2);
+                const u32 __y = (_y + WIN_HEIGHT_D2 - 2);
                 const u32 offset = __x + _Y_OFFSETS[__y];
                 
                 u32* const px = &base[offset];
