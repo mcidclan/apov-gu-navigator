@@ -12,8 +12,10 @@
 #include <string.h>
 #include <psprtc.h>
 #include <psppower.h>
+#include <pspdisplay.h>
 
 #define BUFFER_WIDTH 512
+#define TEXTURE_SIZE 256
 #define SCREEN_WIDTH 480
 #define SCREEN_HEIGHT 272
 
@@ -24,7 +26,7 @@
 #define RAY_STEP 8
 
 PSP_MODULE_INFO("APoV", 0, 1, 0);
-PSP_MAIN_THREAD_ATTR(THREAD_ATTR_USER);
+PSP_MAIN_THREAD_ATTR(THREAD_ATTR_USER | THREAD_ATTR_VFPU);
 PSP_HEAP_SIZE_KB(-1024);
 
 typedef struct Vertex {
@@ -33,12 +35,16 @@ typedef struct Vertex {
 	u16 x, y, z;
 } Vertex __attribute__((aligned(16)));
 
-Vertex __attribute__((aligned(16))) quad[2] = {
-	{0, 0, 0xFFFFFFFF, 0, 0, 0},
-	{512, 272, 0xFFFFFFFF, 512, 272, 0},
+static const Vertex __attribute__((aligned(16))) quad[6] = {
+    {0, TEXTURE_SIZE, 0xFFFFFFFF, 0, TEXTURE_SIZE, 0},
+    {0, 0, 0xFFFFFFFF, 0, 0, 0},
+    {TEXTURE_SIZE, 0, 0xFFFFFFFF, TEXTURE_SIZE, 0, 0},
+    {TEXTURE_SIZE, 0, 0xFFFFFFFF, TEXTURE_SIZE, 0, 0},
+    {TEXTURE_SIZE, TEXTURE_SIZE, 0xFFFFFFFF, TEXTURE_SIZE, TEXTURE_SIZE, 0},
+    {0, TEXTURE_SIZE, 0xFFFFFFFF, 0, TEXTURE_SIZE, 0}
 };
 
-static const u32 BASE_BYTES_COUNT = BUFFER_WIDTH * SCREEN_HEIGHT * sizeof(u32);
+static const u32 BASE_BYTES_COUNT = TEXTURE_SIZE * SCREEN_HEIGHT * sizeof(u32);
 
 static float PROJECTION_FACTOR = 1.0f / MAX_PROJECTION_DEPTH;
 static const float ATOMIC_POV_STEP = 360.0f / ATOMIC_POV_COUNT;
@@ -52,6 +58,26 @@ static u32 WIN_BYTES_COUNT;
 static u32 VIEW_BYTES_COUNT;
 static u32 SPACE_BYTES_COUNT;
 
+// Pre-calculation Processes
+static float _FACTORS[255] = {0.0f};
+
+void getProjectionFactors() {
+    u8 depth = 255;
+    while(depth--) {
+        _FACTORS[depth] = 1.0f - ((float)depth * PROJECTION_FACTOR);
+    }
+}
+
+static u32 _Y_OFFSETS[SPACE_SIZE];
+
+void getYOffsets() {
+    u16 y = SPACE_SIZE;
+    while(y--) {
+        _Y_OFFSETS[y] = y * WIN_WIDTH;
+    }
+}
+//
+
 static void initGuContext(void* list) {
     sceGuStart(GU_DIRECT, list);
     
@@ -60,14 +86,16 @@ static void initGuContext(void* list) {
     BUFFER_WIDTH * SCREEN_HEIGHT) , BUFFER_WIDTH);
     
     sceGuClearColor(0xFF404040);
-    sceGuDisable(GU_SCISSOR_TEST);    
+    sceGuDisable(GU_SCISSOR_TEST);
+    sceGuEnable(GU_CULL_FACE);
+    sceGuFrontFace(GU_CW);
+    
     sceGuTexWrap(GU_CLAMP, GU_CLAMP);
     sceGuTexMode(GU_PSM_8888, 0, 1, 0);
     sceGuEnable(GU_TEXTURE_2D);
     
-    sceGuEnable(GU_BLEND);
-    sceGuTexFunc(GU_TFX_MODULATE, GU_TCC_RGBA);
-    sceGuBlendFunc(GU_ADD, GU_SRC_ALPHA, GU_ONE_MINUS_SRC_ALPHA, 0, 0);
+    sceGuTexFilter(GU_NEAREST,GU_NEAREST);
+    sceGuTexFunc(GU_TFX_REPLACE, GU_TCC_RGB);
     
     sceGuDisplay(GU_TRUE);
     sceGuFinish();
@@ -91,30 +119,29 @@ static void readIo(u32* const frame, const u64 offset) {
 }
 
 void getView(u32* const frame, u8* const zpos, u32* const base) {
+    
     int x = WIN_WIDTH;
     while(x--) {
         int y = WIN_HEIGHT;
         while(y--) {    
-            const u32 step = x + y * WIN_WIDTH;
-            
-            const u32 _frame = frame[step];
+            const u32 _frame = frame[x + _Y_OFFSETS[y]];
             const u8 depth = (u8)(_frame & 0x000000FF);
-            const float s = 1.0f - ((float)depth * PROJECTION_FACTOR);
+            
+            const float s = _FACTORS[depth];
             const int _x = (x - WIN_WIDTH_D2) * s;
             const int _y = (y - WIN_HEIGHT_D2) * s;
-            
-            if(_x >= -WIN_WIDTH_D2 && _x < WIN_WIDTH_D2 && _y >= -WIN_HEIGHT_D2 && _y < WIN_HEIGHT_D2) {
+        
+            if(_x >= -WIN_WIDTH_D2 && _x < WIN_WIDTH_D2 && _y >= -WIN_HEIGHT_D2 && _y < WIN_HEIGHT_D2) {                
                 const u32 __x = (_x + WIN_WIDTH_D2);
                 const u32 __y = (_y + WIN_HEIGHT_D2);
-                const u32 pstep = __x + __y * WIN_WIDTH;
-                const u32 poffset = __x + __y * BUFFER_WIDTH;
+                const u32 offset = __x + _Y_OFFSETS[__y];
                 
-                u32* const px = &base[poffset];
+                u32* const px = &base[offset];
                 
-                if(_frame && (!*px || (depth < zpos[pstep]))) {
+                if(_frame && (!*px || (depth < zpos[offset]))) {
                     *px = 0xFF000000 | (_frame & 0xFF000000) >> 24 |
                     (_frame & 0x00FF0000) >> 8 | (_frame & 0x0000FF00) << 8;
-                    zpos[pstep] = depth;
+                    zpos[offset] = depth;
                 }
             }
         }
@@ -143,7 +170,13 @@ static u64 controls(SceCtrlData* const pad) {
     return VIEW_BYTES_COUNT * move + SPACE_BYTES_COUNT * rotate;
 }
 
+void preCalculate() {
+    getProjectionFactors();
+    getYOffsets();
+}
+
 int main() {
+    sceKernelDcacheWritebackInvalidateAll();
     scePowerSetClockFrequency(333, 333, 166);
     SceCtrlData pad;
     
@@ -154,18 +187,21 @@ int main() {
     VIEW_BYTES_COUNT = WIN_PIXELS_COUNT * sizeof(u32);
     SPACE_BYTES_COUNT = (SPACE_SIZE / RAY_STEP) * VIEW_BYTES_COUNT;
     
-    const u32 lsize = 630000;
-    u32* frame = memalign(16, VIEW_BYTES_COUNT);
+    const u32 lsize = 330000;
+    u32* frame = memalign(16, VIEW_BYTES_COUNT);    
     void* list = memalign(16, lsize);
     
+    preCalculate();
     sceGuInit();
-    pspDebugScreenInit();
     initGuContext(list);
+    pspDebugScreenInitEx(NULL, PSP_DISPLAY_PIXEL_FORMAT_8888, 0);
+    pspDebugScreenEnableBackColor(0);
     openCloseIo(1);
-    u64 size = 0;
     
-    u64 prev, now, fps;
+    int dbuff = 0;
+    u64 size, prev, now, fps;
     const u64 tickResolution = sceRtcGetTickResolution();
+
     do {
         sceRtcGetCurrentTick(&prev);
         
@@ -173,29 +209,28 @@ int main() {
         sceGuStart(GU_DIRECT, list);
         sceGuClear(GU_COLOR_BUFFER_BIT);
         
-        u32* base = (u32*)sceGuGetMemory(BASE_BYTES_COUNT);
+        u32* base = (u32*)sceGuGetMemory(VIEW_BYTES_COUNT);
         u8* zpos = (u8*)sceGuGetMemory(WIN_PIXELS_COUNT);
-        
-        // Fills the texture with debug
-        pspDebugScreenSetBase(base);
-        pspDebugScreenSetXY(0,0);
-        pspDebugScreenSetTextColor(0xFF00A0FF);
-        pspDebugScreenPrintf("Fps: %llu, List size: %llu bytes.\n", fps, size);
         
         const u64 offset = controls(&pad);
         
         readIo(frame, offset);
         getView(frame, zpos, base);
         
-        sceGuTexImage(0, BUFFER_WIDTH, SCREEN_HEIGHT, BUFFER_WIDTH, base);
-        sceGumDrawArray(GU_SPRITES, GU_TEXTURE_16BIT|GU_COLOR_8888|
-		GU_TRANSFORM_2D|GU_VERTEX_16BIT, 2, 0, quad);
+        sceGuTexImage(0, TEXTURE_SIZE, TEXTURE_SIZE, TEXTURE_SIZE, base);
+        sceGumDrawArray(GU_TRIANGLES, GU_TEXTURE_16BIT|GU_COLOR_8888|
+		GU_TRANSFORM_2D|GU_VERTEX_16BIT, 6, 0, quad);
         
         size = sceGuFinish();
         sceGuSync(GU_SYNC_FINISH, GU_SYNC_WHAT_DONE);
-        sceGuSwapBuffers();
-       
-        sceRtcGetCurrentTick(&now); 
+        
+        pspDebugScreenSetOffset(dbuff);
+        pspDebugScreenSetXY(0, 0);
+        pspDebugScreenSetTextColor(0xFF00A0FF);
+        pspDebugScreenPrintf("Fps: %llu, List size: %llu bytes.\n", fps, size);
+        dbuff = (int)sceGuSwapBuffers();
+        
+        sceRtcGetCurrentTick(&now);
         fps = tickResolution / (now - prev);
     } while(!(pad.Buttons & PSP_CTRL_SELECT));
     
