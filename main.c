@@ -121,7 +121,10 @@ static void readIo(u32* const frame, const u64 offset) {
     static u64 loffset = -1;
     if(offset != loffset) {
         sceIoLseek(f, offset, SEEK_SET);
-        sceIoRead(f, frame, WIN_PIXELS_COUNT * sizeof(u32));
+        const u64 nbytes = WIN_PIXELS_COUNT * sizeof(u32);
+        if(nbytes != sceIoRead(f, frame, nbytes)) {
+            openCloseIo(1);
+        }
         loffset = offset;
     }
 }
