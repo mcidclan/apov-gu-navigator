@@ -59,47 +59,30 @@ static u32 VIEW_BYTES_COUNT;
 static u32 SPACE_BYTES_COUNT;
 
 // Pre-calculation Processes
-static float __attribute__((aligned(16))) _FACTORS[255] = {0.0f};
+typedef struct {
+    int x, y;
+} Coords __attribute__((aligned(16)));
 
-void getProjectionFactors() {
-    u8 depth = 255;
+static float* _FACTORS;
+static Coords* _COORDINATES;
+
+void preCalculate() {
+    _FACTORS = memalign(16, 256 * sizeof(float));
+    _COORDINATES = memalign(16, WIN_PIXELS_COUNT * sizeof(Coords));
+    
+    u16 depth = 256;
     while(depth--) {
         _FACTORS[depth] = 1.0f - ((float)depth * PROJECTION_FACTOR);
     }
-}
-
-struct Coords {
-    int x, y;
-} __attribute__((aligned(16)));
-
-static struct Coords __attribute__((aligned(16))) _COORDINATES[SPACE_SIZE*SPACE_SIZE] = {{0}};
-
-void getCoordinates() {
-    u16 x = WIN_WIDTH;
-    while(x--) {
-        u16 y = WIN_HEIGHT;
-        while(y--) {
-            const u32 i = x + y * WIN_WIDTH;
-            _COORDINATES[i].x = x - WIN_WIDTH_D2;
-            _COORDINATES[i].y = y - WIN_HEIGHT_D2;
-        }
-    }
-}
     
-static u32 __attribute__((aligned(16))) _OFFSETS[SPACE_SIZE*SPACE_SIZE] = {0};
-
-void getOffsets() {
-    int x = -WIN_WIDTH_D2;
-    while(x < WIN_WIDTH_D2) {
-        int y = -WIN_HEIGHT_D2;
-        while(y < WIN_HEIGHT_D2) {
-            const u16 _x = (x + WIN_WIDTH_D2 - 2);
-            const u16 _y = (y + WIN_HEIGHT_D2 - 2);
-            const u32 offset = _x + _y * WIN_WIDTH;
-            _OFFSETS[(x + WIN_WIDTH_D2) | (y << 8)] = offset;
-            y++;
+    u16 ux = WIN_WIDTH;
+    while(ux--) {
+        u16 uy = WIN_HEIGHT;
+        while(uy--) {
+            const u32 i = ux + uy * WIN_WIDTH;
+            _COORDINATES[i].x = ux - WIN_WIDTH_D2;
+            _COORDINATES[i].y = uy - WIN_HEIGHT_D2;
         }
-        x++;
     }
 }
 
@@ -144,25 +127,37 @@ static void readIo(u32* const frame, const u64 offset) {
 }
 
 void getView(u32* const frame, u8* const zpos, u32* const base) {
-    
-    int i = WIN_PIXELS_COUNT;
-    while(i--) {
-        const u32 _frame = frame[i];
-        const u8 depth = (u8)(_frame & 0x000000FF);
-        if(_frame) {
-            const float s = _FACTORS[depth];
-            const int _x = _COORDINATES[i].x * s;
-            const int _y = _COORDINATES[i].y * s;
-        
-            if(_x >= -WIN_WIDTH_D2 && _x < WIN_WIDTH_D2 && _y >= -WIN_HEIGHT_D2 && _y < WIN_HEIGHT_D2) {
-                const u32 offset = _OFFSETS[(_x + WIN_WIDTH_D2) | (_y << 8)];
-                u32* const px = &base[offset];
-                
-                if(_frame && (!*px || (depth < zpos[offset]))) {
-                    *px = 0xFF000000 | (_frame & 0xFF000000) >> 24 |
-                    (_frame & 0x00FF0000) >> 8 | (_frame & 0x0000FF00) << 8;
-                    zpos[offset] = depth;
+    if(MAX_PROJECTION_DEPTH > 0.0f) {
+        int i = WIN_PIXELS_COUNT;
+        while(i--) {
+            const u32 _frame = frame[i];
+            const u8 depth = (u8)(_frame & 0x000000FF);
+            if(_frame) {
+                const float s = _FACTORS[depth];
+                const int _x = _COORDINATES[i].x * s;
+                const int _y = _COORDINATES[i].y * s;
+            
+                if(_x >= -WIN_WIDTH_D2 && _x < WIN_WIDTH_D2 && _y >= -WIN_HEIGHT_D2 && _y < WIN_HEIGHT_D2) {
+                    const u16 __x = (_x + WIN_WIDTH_D2 - 2);
+                    const u16 __y = (_y + WIN_HEIGHT_D2 - 2);
+                    const u32 offset = __x | (__y << 8);                    
+                    u32* const px = &base[offset];
+                    
+                    if(_frame && (!*px || (depth < zpos[offset]))) {
+                        *px = 0xFF000000 | (_frame & 0xFF000000) >> 24 |
+                        (_frame & 0x00FF0000) >> 8 | (_frame & 0x0000FF00) << 8;
+                        zpos[offset] = depth;
+                    }
                 }
+            }
+        }
+    } else {
+        u32 i = WIN_PIXELS_COUNT;
+        while(i--) {
+            const u32 _frame = frame[i];
+            if(_frame) {
+                *((u32*)&base[i*4]) = 0xFF000000 | (_frame & 0xFF000000) >> 24 |
+                    (_frame & 0x00FF0000) >> 8 | (_frame & 0x0000FF00) << 8;
             }
         }
     }
@@ -190,14 +185,8 @@ static u64 controls(SceCtrlData* const pad) {
     return VIEW_BYTES_COUNT * move + SPACE_BYTES_COUNT * rotate;
 }
 
-void preCalculate() {
-    getProjectionFactors();
-    getCoordinates();
-    getOffsets();
-}
-
 int main() {
-    sceKernelDcacheWritebackInvalidateAll();
+    //sceKernelDcacheWritebackInvalidateAll();
     scePowerSetClockFrequency(333, 333, 166);
     SceCtrlData pad;
     
@@ -215,6 +204,7 @@ int main() {
     preCalculate();
     sceGuInit();
     initGuContext(list);
+    
     pspDebugScreenInitEx(NULL, PSP_DISPLAY_PIXEL_FORMAT_8888, 0);
     pspDebugScreenEnableBackColor(0);
     openCloseIo(1);
@@ -257,6 +247,9 @@ int main() {
     
     free(list);
     free(frame);
+    free(_FACTORS);
+    free(_COORDINATES);
+    
     openCloseIo(0);
     sceKernelExitGame();
     return 0;
