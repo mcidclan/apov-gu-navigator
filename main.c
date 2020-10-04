@@ -138,8 +138,8 @@ void getView(u32* const frame, u8* const zpos, u32* const base) {
                 const int _y = _COORDINATES[i].y * s;
             
                 if(_x >= -WIN_WIDTH_D2 && _x < WIN_WIDTH_D2 && _y >= -WIN_HEIGHT_D2 && _y < WIN_HEIGHT_D2) {
-                    const u16 __x = (_x + WIN_WIDTH_D2 - 2);
-                    const u16 __y = (_y + WIN_HEIGHT_D2 - 2);
+                    const u16 __x = (_x + WIN_WIDTH_D2 - 1);
+                    const u16 __y = (_y + WIN_HEIGHT_D2 - 1);
                     const u32 offset = __x | (__y << 8);                    
                     u32* const px = &base[offset];
                     
