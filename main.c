@@ -59,7 +59,7 @@ static u32 VIEW_BYTES_COUNT;
 static u32 SPACE_BYTES_COUNT;
 
 // Pre-calculation Processes
-static float _FACTORS[255] = {0.0f};
+static float __attribute__((aligned(16))) _FACTORS[255] = {0.0f};
 
 void getProjectionFactors() {
     u8 depth = 255;
@@ -68,15 +68,40 @@ void getProjectionFactors() {
     }
 }
 
-static u32 _Y_OFFSETS[SPACE_SIZE];
+struct Coords {
+    int x, y;
+} __attribute__((aligned(16)));
 
-void getYOffsets() {
-    u16 y = SPACE_SIZE;
-    while(y--) {
-        _Y_OFFSETS[y] = y * WIN_WIDTH;
+static struct Coords __attribute__((aligned(16))) _COORDINATES[SPACE_SIZE*SPACE_SIZE] = {{0}};
+
+void getCoordinates() {
+    u16 x = WIN_WIDTH;
+    while(x--) {
+        u16 y = WIN_HEIGHT;
+        while(y--) {
+            const u32 i = x + y * WIN_WIDTH;
+            _COORDINATES[i].x = x - WIN_WIDTH_D2;
+            _COORDINATES[i].y = y - WIN_HEIGHT_D2;
+        }
     }
 }
-//
+    
+static u32 __attribute__((aligned(16))) _OFFSETS[SPACE_SIZE*SPACE_SIZE] = {0};
+
+void getOffsets() {
+    int x = -WIN_WIDTH_D2;
+    while(x < WIN_WIDTH_D2) {
+        int y = -WIN_HEIGHT_D2;
+        while(y < WIN_HEIGHT_D2) {
+            const u16 _x = (x + WIN_WIDTH_D2 - 2);
+            const u16 _y = (y + WIN_HEIGHT_D2 - 2);
+            const u32 offset = _x + _y * WIN_WIDTH;
+            _OFFSETS[(x + WIN_WIDTH_D2) | (y << 8)] = offset;
+            y++;
+        }
+        x++;
+    }
+}
 
 static void initGuContext(void* list) {
     sceGuStart(GU_DIRECT, list);
@@ -105,7 +130,7 @@ static void initGuContext(void* list) {
 static SceUID f;
 static void openCloseIo(const u8 open) {
     if(open) {
-        f = sceIoOpen("atoms.bin", PSP_O_RDONLY, 0777);
+        f = sceIoOpen("atoms-psp.bin", PSP_O_RDONLY, 0777);
     } else sceIoClose(f);
 }
 
@@ -120,22 +145,17 @@ static void readIo(u32* const frame, const u64 offset) {
 
 void getView(u32* const frame, u8* const zpos, u32* const base) {
     
-    int x = WIN_WIDTH;
-    while(x--) {
-        int y = WIN_HEIGHT;
-        while(y--) {    
-            const u32 _frame = frame[x + _Y_OFFSETS[y]];
-            const u8 depth = (u8)(_frame & 0x000000FF);
-            
+    int i = WIN_PIXELS_COUNT;
+    while(i--) {
+        const u32 _frame = frame[i];
+        const u8 depth = (u8)(_frame & 0x000000FF);
+        if(_frame) {
             const float s = _FACTORS[depth];
-            const int _x = (x - WIN_WIDTH_D2) * s;
-            const int _y = (y - WIN_HEIGHT_D2) * s;
+            const int _x = _COORDINATES[i].x * s;
+            const int _y = _COORDINATES[i].y * s;
         
-            if(_x >= -WIN_WIDTH_D2 && _x < WIN_WIDTH_D2 && _y >= -WIN_HEIGHT_D2 && _y < WIN_HEIGHT_D2) {                
-                const u32 __x = (_x + WIN_WIDTH_D2 - 2);
-                const u32 __y = (_y + WIN_HEIGHT_D2 - 2);
-                const u32 offset = __x + _Y_OFFSETS[__y];
-                
+            if(_x >= -WIN_WIDTH_D2 && _x < WIN_WIDTH_D2 && _y >= -WIN_HEIGHT_D2 && _y < WIN_HEIGHT_D2) {
+                const u32 offset = _OFFSETS[(_x + WIN_WIDTH_D2) | (_y << 8)];
                 u32* const px = &base[offset];
                 
                 if(_frame && (!*px || (depth < zpos[offset]))) {
@@ -162,7 +182,7 @@ static u64 controls(SceCtrlData* const pad) {
     }
         
     if(pad->Buttons & PSP_CTRL_UP) {
-        if(move < (SPACE_SIZE / RAY_STEP)) { move++; }
+        if(move < (SPACE_SIZE / RAY_STEP) - 1) { move++; }
     }
     if(pad->Buttons & PSP_CTRL_DOWN) {
         if(move > 0) { move--; }
@@ -172,7 +192,8 @@ static u64 controls(SceCtrlData* const pad) {
 
 void preCalculate() {
     getProjectionFactors();
-    getYOffsets();
+    getCoordinates();
+    getOffsets();
 }
 
 int main() {
