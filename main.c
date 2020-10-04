@@ -19,11 +19,8 @@
 #define SCREEN_WIDTH 480
 #define SCREEN_HEIGHT 272
 
-#define COLOR_BYTES_COUNT 4
-#define MAX_PROJECTION_DEPTH 800.0f
-#define ATOMIC_POV_COUNT 90
 #define SPACE_SIZE 256
-#define RAY_STEP 4
+#define COLOR_BYTES_COUNT 4
 
 PSP_MODULE_INFO("APoV", 0, 1, 0);
 PSP_MAIN_THREAD_ATTR(THREAD_ATTR_USER | THREAD_ATTR_VFPU);
@@ -44,10 +41,13 @@ static const Vertex __attribute__((aligned(16))) quad[6] = {
     {0, TEXTURE_SIZE, 0xFFFFFFFF, 0, TEXTURE_SIZE, 0}
 };
 
+static u32 RAY_STEP = 1;
+static u32 ATOMIC_POV_COUNT = 4;
+static float MAX_PROJECTION_DEPTH = 0.0f;
+
 static const u32 BASE_BYTES_COUNT = TEXTURE_SIZE * SCREEN_HEIGHT * sizeof(u32);
 
-static float PROJECTION_FACTOR = 1.0f / MAX_PROJECTION_DEPTH;
-static const float ATOMIC_POV_STEP = 360.0f / ATOMIC_POV_COUNT;
+static float PROJECTION_FACTOR;
 static const u16 WIN_WIDTH = SPACE_SIZE;
 static const u16 WIN_HEIGHT = SPACE_SIZE;
 
@@ -156,7 +156,7 @@ void getView(u32* const frame, u8* const zpos, u32* const base) {
         while(i--) {
             const u32 _frame = frame[i];
             if(_frame) {
-                *((u32*)&base[i*4]) = 0xFF000000 | (_frame & 0xFF000000) >> 24 |
+                base[i] = 0xFF000000 | (_frame & 0xFF000000) >> 24 |
                     (_frame & 0x00FF0000) >> 8 | (_frame & 0x0000FF00) << 8;
             }
         }
@@ -185,11 +185,25 @@ static u64 controls(SceCtrlData* const pad) {
     return VIEW_BYTES_COUNT * move + SPACE_BYTES_COUNT * rotate;
 }
 
+void getOptions() {
+    FILE* f = fopen("options.txt", "r");
+    if(f != NULL) {
+        char* options = (char*)memalign(16, 32);
+        fgets(options, 32, f);
+        sscanf(options, "%f %u %u",
+        &MAX_PROJECTION_DEPTH, &ATOMIC_POV_COUNT, &RAY_STEP);
+        fclose(f);
+    }
+}
+
 int main() {
-    //sceKernelDcacheWritebackInvalidateAll();
     scePowerSetClockFrequency(333, 333, 166);
     SceCtrlData pad;
     
+    getOptions();
+    if(MAX_PROJECTION_DEPTH > 0.0f) {
+        PROJECTION_FACTOR = 1.0f / MAX_PROJECTION_DEPTH;  
+    }
     WIN_WIDTH_D2 = WIN_WIDTH / 2;
     WIN_HEIGHT_D2 = WIN_HEIGHT / 2;
     WIN_PIXELS_COUNT = WIN_WIDTH * WIN_HEIGHT;
@@ -201,7 +215,9 @@ int main() {
     u32* frame = memalign(16, VIEW_BYTES_COUNT);    
     void* list = memalign(16, lsize);
     
-    preCalculate();
+    if(MAX_PROJECTION_DEPTH > 0.0f) {
+        preCalculate();
+    }
     sceGuInit();
     initGuContext(list);
     
