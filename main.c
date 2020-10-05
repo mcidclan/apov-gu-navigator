@@ -32,13 +32,15 @@ typedef struct Vertex {
 	u16 x, y, z;
 } Vertex __attribute__((aligned(16)));
 
+#define S TEXTURE_SIZE
+#define T TEXTURE_SIZE
 static const Vertex __attribute__((aligned(16))) quad[6] = {
-    {0, TEXTURE_SIZE, 0xFFFFFFFF, 0, TEXTURE_SIZE, 0},
+    {0, T, 0xFFFFFFFF, 0, S, 0},
     {0, 0, 0xFFFFFFFF, 0, 0, 0},
-    {TEXTURE_SIZE, 0, 0xFFFFFFFF, TEXTURE_SIZE, 0, 0},
-    {TEXTURE_SIZE, 0, 0xFFFFFFFF, TEXTURE_SIZE, 0, 0},
-    {TEXTURE_SIZE, TEXTURE_SIZE, 0xFFFFFFFF, TEXTURE_SIZE, TEXTURE_SIZE, 0},
-    {0, TEXTURE_SIZE, 0xFFFFFFFF, 0, TEXTURE_SIZE, 0}
+    {T, 0, 0xFFFFFFFF, S, 0, 0},
+    {T, 0, 0xFFFFFFFF, S, 0, 0},
+    {T, T, 0xFFFFFFFF, S, S, 0},
+    {0, T, 0xFFFFFFFF, 0, S, 0}
 };
 
 static u32 RAY_STEP = 1;
@@ -214,8 +216,11 @@ int main() {
     VIEW_BYTES_COUNT = WIN_PIXELS_COUNT * sizeof(u32);
     SPACE_BYTES_COUNT = (SPACE_SIZE / RAY_STEP) * VIEW_BYTES_COUNT;
     
-    const u32 lsize = 330000;
+    u8* zpos = memalign(16, WIN_PIXELS_COUNT);
+    u32* base = memalign(16, VIEW_BYTES_COUNT);
     u32* frame = memalign(16, VIEW_BYTES_COUNT);    
+    
+    const u32 lsize = 256;
     void* list = memalign(16, lsize);
     
     if(MAX_PROJECTION_DEPTH > 0.0f) {
@@ -235,12 +240,11 @@ int main() {
     do {
         sceRtcGetCurrentTick(&prev);
         
-        memset(list, 0, lsize);
+        memset(zpos, 0, WIN_PIXELS_COUNT);
+        memset(base, 0, VIEW_BYTES_COUNT);
+        
         sceGuStart(GU_DIRECT, list);
         sceGuClear(GU_COLOR_BUFFER_BIT);
-        
-        u32* base = (u32*)sceGuGetMemory(VIEW_BYTES_COUNT);
-        u8* zpos = (u8*)sceGuGetMemory(WIN_PIXELS_COUNT);
         
         const u64 offset = controls(&pad);
         
@@ -265,6 +269,8 @@ int main() {
     } while(!(pad.Buttons & PSP_CTRL_SELECT));
     
     free(list);
+    free(zpos);
+    free(base);
     free(frame);
     free(_FACTORS);
     free(_COORDINATES);
