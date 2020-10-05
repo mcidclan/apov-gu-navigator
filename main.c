@@ -26,6 +26,8 @@ PSP_MODULE_INFO("APoV", 0, 1, 0);
 PSP_MAIN_THREAD_ATTR(THREAD_ATTR_USER | THREAD_ATTR_VFPU);
 PSP_HEAP_SIZE_KB(-1024);
 
+void sceDmacMemcpy(void *dst, const void *src, int size);
+
 typedef struct Vertex {
 	u16 u, v;
 	u32 color;
@@ -149,22 +151,14 @@ void getView(u32* const frame, u8* const zpos, u32* const base) {
                     u32* const px = &base[offset];
                     
                     if(_frame && (!*px || (depth < zpos[offset]))) {
-                        *px = 0xFF000000 | (_frame & 0xFF000000) >> 24 |
-                        (_frame & 0x00FF0000) >> 8 | (_frame & 0x0000FF00) << 8;
+                        *px = 0xFF000000 | _frame;
                         zpos[offset] = depth;
                     }
                 }
             }
         }
     } else {
-        u32 i = WIN_PIXELS_COUNT;
-        while(i--) {
-            const u32 _frame = frame[i];
-            if(_frame) {
-                base[i] = 0xFF000000 | (_frame & 0xFF000000) >> 24 |
-                    (_frame & 0x00FF0000) >> 8 | (_frame & 0x0000FF00) << 8;
-            }
-        }
+        sceDmacMemcpy(base, frame, WIN_BYTES_COUNT);
     }
 }
 
