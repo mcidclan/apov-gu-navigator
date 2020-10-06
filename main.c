@@ -36,35 +36,36 @@ typedef struct Vertex {
 
 #define S TEXTURE_SIZE / 2
 #define T TEXTURE_SIZE / 2
-
+#define X 112
+#define Y 8
 static const Vertex __attribute__((aligned(16))) quad[24] = {
-    {0, T, 0xFFFFFFFF, 0, S, 0},
-    {0, 0, 0xFFFFFFFF, 0, 0, 0},
-    {T, 0, 0xFFFFFFFF, S, 0, 0},
-    {T, 0, 0xFFFFFFFF, S, 0, 0},
-    {T, T, 0xFFFFFFFF, S, S, 0},
-    {0, T, 0xFFFFFFFF, 0, S, 0},
+    {0, T, 0xFFFFFFFF, X+0, Y+S, 0},
+    {0, 0, 0xFFFFFFFF, X+0, Y+0, 0},
+    {T, 0, 0xFFFFFFFF, X+S, Y+0, 0},
+    {T, 0, 0xFFFFFFFF, X+S, Y+0, 0},
+    {T, T, 0xFFFFFFFF, X+S, Y+S, 0},
+    {0, T, 0xFFFFFFFF, X+0, Y+S, 0},
     //
-    {T,   T,   0xFFFFFFFF, S,   S, 0},
-    {T,   0,   0xFFFFFFFF, S,   0, 0},
-    {T+T, 0,   0xFFFFFFFF, S+S, 0, 0},
-    {T+T, 0,   0xFFFFFFFF, S+S, 0, 0},
-    {T+T, T,   0xFFFFFFFF, S+S, S, 0},
-    {T,   T,   0xFFFFFFFF, S,   S, 0},
+    {T,   T,   0xFFFFFFFF, X+S,   Y+S, 0},
+    {T,   0,   0xFFFFFFFF, X+S,   Y+0, 0},
+    {T+T, 0,   0xFFFFFFFF, X+S+S, Y+0, 0},
+    {T+T, 0,   0xFFFFFFFF, X+S+S, Y+0, 0},
+    {T+T, T,   0xFFFFFFFF, X+S+S, Y+S, 0},
+    {T,   T,   0xFFFFFFFF, X+S,   Y+S, 0},
     //
-    {0, T+T, 0xFFFFFFFF, 0, S+S, 0},
-    {0, T,   0xFFFFFFFF, 0, S,   0},
-    {T, T,   0xFFFFFFFF, S, S,   0},
-    {T, T,   0xFFFFFFFF, S, S,   0},
-    {T, T+T, 0xFFFFFFFF, S, S+S, 0},
-    {0, T+T, 0xFFFFFFFF, 0, S+S, 0},
+    {0, T+T, 0xFFFFFFFF, X+0, Y+S+S, 0},
+    {0, T,   0xFFFFFFFF, X+0, Y+S,   0},
+    {T, T,   0xFFFFFFFF, X+S, Y+S,   0},
+    {T, T,   0xFFFFFFFF, X+S, Y+S,   0},
+    {T, T+T, 0xFFFFFFFF, X+S, Y+S+S, 0},
+    {0, T+T, 0xFFFFFFFF, X+0, Y+S+S, 0},
     //
-    {T,   T+T, 0xFFFFFFFF, S,   S+S, 0},
-    {T,   T,   0xFFFFFFFF, S,   S,   0},
-    {T+T, T,   0xFFFFFFFF, S+S, S,   0},
-    {T+T, T,   0xFFFFFFFF, S+S, S,   0},
-    {T+T, T+T, 0xFFFFFFFF, S+S, S+S, 0},
-    {T,   T+T, 0xFFFFFFFF, S,   S+S, 0},
+    {T,   T+T, 0xFFFFFFFF, X+S,   Y+S+S, 0},
+    {T,   T,   0xFFFFFFFF, X+S,   Y+S,   0},
+    {T+T, T,   0xFFFFFFFF, X+S+S, Y+S,   0},
+    {T+T, T,   0xFFFFFFFF, X+S+S, Y+S,   0},
+    {T+T, T+T, 0xFFFFFFFF, X+S+S, Y+S+S, 0},
+    {T,   T+T, 0xFFFFFFFF, X+S,   Y+S+S, 0},
 };
 
 static u32 RAY_STEP = 1;
@@ -119,7 +120,7 @@ static void initGuContext(void* list) {
     sceGuDispBuffer(SCREEN_WIDTH, SCREEN_HEIGHT, (void*)(sizeof(u32) *
     BUFFER_WIDTH * SCREEN_HEIGHT) , BUFFER_WIDTH);
     
-    sceGuClearColor(0xFF404040);
+    sceGuClearColor(0xFF000000); //0xFF404040
     sceGuDisable(GU_SCISSOR_TEST);
     sceGuEnable(GU_CULL_FACE);
     sceGuFrontFace(GU_CW);
@@ -256,7 +257,9 @@ int main() {
     do {
         sceRtcGetCurrentTick(&prev);
         
-        memset(zpos, 0, WIN_PIXELS_COUNT);
+        if(MAX_PROJECTION_DEPTH > 0.0f) {
+            memset(zpos, 0, WIN_PIXELS_COUNT);
+        }
         memset(base, 0, VIEW_BYTES_COUNT);
         
         sceGuStart(GU_DIRECT, list);
