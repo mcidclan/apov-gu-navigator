@@ -68,10 +68,11 @@ static const Vertex __attribute__((aligned(16))) quad[24] = {
     {T,   T+T, 0xFFFFFFFF, X+S,   Y+S+S, 0},
 };
 
+static u8 DEPTH_OF_FIELD = 0;
+
 static u32 RAY_STEP = 1;
 static u32 ATOMIC_POV_COUNT = 4;
 static float MAX_PROJECTION_DEPTH = 0.0f;
-
 static const u32 BASE_BYTES_COUNT = TEXTURE_SIZE * SCREEN_HEIGHT * sizeof(u32);
 
 static float PROJECTION_FACTOR;
@@ -158,7 +159,7 @@ static void readIo(u32* const frame, const u64 offset) {
 
 void getView(u32* const frame, u8* const zpos, u32* const base) {
     if(MAX_PROJECTION_DEPTH > 0.0f) {
-        int i = WIN_PIXELS_COUNT;
+        u32 i = WIN_PIXELS_COUNT;
         while(i--) {
             const u32 _frame = frame[i];
             const u8 depth = (u8)(_frame & 0x000000FF);
@@ -181,14 +182,83 @@ void getView(u32* const frame, u8* const zpos, u32* const base) {
             }
         }
     } else {
-        sceDmacMemcpy(base, frame, WIN_BYTES_COUNT);
+        if(DEPTH_OF_FIELD) {
+            u32 x = WIN_WIDTH - 3;
+            while(--x > 2) {
+                u32 y = WIN_HEIGHT - 3;
+                while(--y > 2) {
+                    
+                        u32 const o = frame[x | y << 8];
+                        u32 const a = frame[(x + 3) | y << 8];
+                        u32 const b = frame[(x - 3) | y << 8];
+                        u32 const c = frame[x | (y + 3) << 8];
+                        u32 const d = frame[x | (y - 3) << 8];
+                        
+                        u32 const e = frame[(x + 2) | (y + 2) << 8];
+                        u32 const f = frame[(x - 2) | (y + 2) << 8];
+                        u32 const g = frame[(x + 2) | (y + 2) << 8];
+                        u32 const h = frame[(x - 2) | (y - 2) << 8];
+                            
+                    if(o || a || b || c || d || e || f || g || h) {
+                        
+                        u8 n =
+                            (a ? 1 : 0) +
+                            (b ? 1 : 0) +
+                            (c ? 1 : 0) +
+                            (d ? 1 : 0) +
+                            (e ? 1 : 0) +
+                            (f ? 1 : 0) +
+                            (g ? 1 : 0) +
+                            (h ? 1 : 0);
+                        
+                        const int dd = n ? ((
+                            ((a & 0xFF000000) >> 24) +
+                            ((b & 0xFF000000) >> 24) +
+                            ((c & 0xFF000000) >> 24) +
+                            ((d & 0xFF000000) >> 24) +
+                            ((e & 0xFF000000) >> 24) +
+                            ((f & 0xFF000000) >> 24) +
+                            ((g & 0xFF000000) >> 24) +
+                            ((h & 0xFF000000) >> 24)
+                        ) / n) - ((o & 0xFF000000) >> 24) : 0;
+                        
+                        if(dd >= -20 && dd <= 20) {                            
+                            const u8 _R = (
+                                (o & 0x000000FF) + (a & 0x000000FF) + (b & 0x000000FF) + (c & 0x000000FF) + (d & 0x000000FF) +
+                                (e & 0x000000FF) + (f & 0x000000FF) + (g & 0x000000FF) + (h & 0x000000FF)) / 9;
+                                
+                            const u8 _G = (
+                                ((o & 0x0000FF00) >> 8) + ((a & 0x0000FF00) >> 8) + ((b & 0x0000FF00) >> 8) + ((c & 0x0000FF00) >> 8) + ((d & 0x0000FF00) >> 8) +
+                                ((e & 0x0000FF00) >> 8) + ((f & 0x0000FF00) >> 8) + ((g & 0x0000FF00) >> 8) + ((h & 0x0000FF00) >> 8)) / 9;
+                                
+                            const u8 _B = (
+                                ((o & 0x00FF0000) >> 16) + ((a & 0x00FF0000) >> 16) + ((b & 0x00FF0000) >> 16) + ((c & 0x00FF0000) >> 16) + ((d & 0x00FF0000) >> 16) +
+                                ((e & 0x00FF0000) >> 16) + ((f & 0x00FF0000) >> 16) + ((g & 0x00FF0000) >> 16) + ((h & 0x00FF0000) >> 16)) / 9;
+                        
+                            const float maxdof = 127.0f;
+                            float depth = ((o & 0xFF000000) >> 24);
+                            if(depth > maxdof) { depth = maxdof; }
+                            
+                            const float m = (maxdof - depth)/maxdof;                            
+                            const u8 R = m * (o & 0x000000FF) +  (1 - m) * _R;
+                            const u8 G = m * ((o & 0x0000FF00) >> 8) + (1 - m) * _G;
+                            const u8 B = m * ((o & 0x00FF0000) >> 16) + (1 - m) * _B;
+                            
+                            base[x | y << 8] = 0xFF000000 | (B << 16) | (G << 8) | R;
+                        } else base[x | y << 8] = 0xFF000000 | o;
+                    }
+                }
+            }
+        }
+        else sceDmacMemcpy(base, frame, WIN_BYTES_COUNT);
     }
 }
 
 static u64 controls(SceCtrlData* const pad) {
     static int move = 0;
     static int rotate = 0;
-
+    static SceCtrlData lpad;
+    
     sceCtrlReadBufferPositive(pad, 1);
     if(pad->Buttons & PSP_CTRL_LEFT) { rotate--; }
     if(pad->Buttons & PSP_CTRL_RIGHT) { rotate++; }
@@ -204,6 +274,13 @@ static u64 controls(SceCtrlData* const pad) {
     if(pad->Buttons & PSP_CTRL_DOWN) {
         if(move > 0) { move--; }
     }
+    
+    if((pad->Buttons & PSP_CTRL_TRIANGLE) &&
+        !(lpad.Buttons & PSP_CTRL_TRIANGLE)) {
+        DEPTH_OF_FIELD = !DEPTH_OF_FIELD;
+    }
+    
+    lpad = *pad;
     return VIEW_BYTES_COUNT * move + SPACE_BYTES_COUNT * rotate;
 }
 
@@ -280,7 +357,8 @@ int main() {
         pspDebugScreenSetOffset(dbuff);
         pspDebugScreenSetXY(0, 0);
         pspDebugScreenSetTextColor(0xFF00A0FF);
-        pspDebugScreenPrintf("Fps: %llu, List size: %llu bytes.\n", fps, size);
+        pspDebugScreenPrintf("Fps: %llu, DOF: %s\n", fps, DEPTH_OF_FIELD ? "on" : "off");
+        pspDebugScreenPrintf("List size: %llu bytes.\n", size);
         dbuff = (int)sceGuSwapBuffers();
         
         sceRtcGetCurrentTick(&now);
