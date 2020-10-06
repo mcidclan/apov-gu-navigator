@@ -34,15 +34,37 @@ typedef struct Vertex {
 	u16 x, y, z;
 } Vertex __attribute__((aligned(16)));
 
-#define S TEXTURE_SIZE
-#define T TEXTURE_SIZE
-static const Vertex __attribute__((aligned(16))) quad[6] = {
+#define S TEXTURE_SIZE / 2
+#define T TEXTURE_SIZE / 2
+
+static const Vertex __attribute__((aligned(16))) quad[24] = {
     {0, T, 0xFFFFFFFF, 0, S, 0},
     {0, 0, 0xFFFFFFFF, 0, 0, 0},
     {T, 0, 0xFFFFFFFF, S, 0, 0},
     {T, 0, 0xFFFFFFFF, S, 0, 0},
     {T, T, 0xFFFFFFFF, S, S, 0},
-    {0, T, 0xFFFFFFFF, 0, S, 0}
+    {0, T, 0xFFFFFFFF, 0, S, 0},
+    //
+    {T,   T,   0xFFFFFFFF, S,   S, 0},
+    {T,   0,   0xFFFFFFFF, S,   0, 0},
+    {T+T, 0,   0xFFFFFFFF, S+S, 0, 0},
+    {T+T, 0,   0xFFFFFFFF, S+S, 0, 0},
+    {T+T, T,   0xFFFFFFFF, S+S, S, 0},
+    {T,   T,   0xFFFFFFFF, S,   S, 0},
+    //
+    {0, T+T, 0xFFFFFFFF, 0, S+S, 0},
+    {0, T,   0xFFFFFFFF, 0, S,   0},
+    {T, T,   0xFFFFFFFF, S, S,   0},
+    {T, T,   0xFFFFFFFF, S, S,   0},
+    {T, T+T, 0xFFFFFFFF, S, S+S, 0},
+    {0, T+T, 0xFFFFFFFF, 0, S+S, 0},
+    //
+    {T,   T+T, 0xFFFFFFFF, S,   S+S, 0},
+    {T,   T,   0xFFFFFFFF, S,   S,   0},
+    {T+T, T,   0xFFFFFFFF, S+S, S,   0},
+    {T+T, T,   0xFFFFFFFF, S+S, S,   0},
+    {T+T, T+T, 0xFFFFFFFF, S+S, S+S, 0},
+    {T,   T+T, 0xFFFFFFFF, S,   S+S, 0},
 };
 
 static u32 RAY_STEP = 1;
@@ -247,7 +269,7 @@ int main() {
         
         sceGuTexImage(0, TEXTURE_SIZE, TEXTURE_SIZE, TEXTURE_SIZE, base);
         sceGumDrawArray(GU_TRIANGLES, GU_TEXTURE_16BIT|GU_COLOR_8888|
-		GU_TRANSFORM_2D|GU_VERTEX_16BIT, 6, 0, quad);
+		GU_TRANSFORM_2D|GU_VERTEX_16BIT, 24, 0, quad);
         
         size = sceGuFinish();
         sceGuSync(GU_SYNC_FINISH, GU_SYNC_WHAT_DONE);
