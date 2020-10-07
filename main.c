@@ -121,7 +121,7 @@ static void initGuContext(void* list) {
     sceGuDispBuffer(SCREEN_WIDTH, SCREEN_HEIGHT, (void*)(sizeof(u32) *
     BUFFER_WIDTH * SCREEN_HEIGHT) , BUFFER_WIDTH);
     
-    sceGuClearColor(0xFF000000); //0xFF404040
+    sceGuClearColor(0xFF000000);
     sceGuDisable(GU_SCISSOR_TEST);
     sceGuEnable(GU_CULL_FACE);
     sceGuFrontFace(GU_CW);
@@ -144,6 +144,7 @@ static void openCloseIo(const u8 open) {
         f = sceIoOpen("atoms-psp.bin", PSP_O_RDONLY, 0777);
     } else sceIoClose(f);
 }
+
 
 static void readIo(u32* const frame, const u64 offset) {
     static u64 loffset = -1;
@@ -187,7 +188,6 @@ void getView(u32* const frame, u8* const zpos, u32* const base) {
             while(--x > 2) {
                 u32 y = WIN_HEIGHT - 3;
                 while(--y > 2) {
-                    
                         u32 const o = frame[x | y << 8];
                         u32 const a = frame[(x + 3) | y << 8];
                         u32 const b = frame[(x - 3) | y << 8];
@@ -249,39 +249,58 @@ void getView(u32* const frame, u8* const zpos, u32* const base) {
                     }
                 }
             }
+        } else {
+            sceKernelDcacheWritebackAll();
+            sceDmacMemcpy(base, frame, WIN_BYTES_COUNT);
         }
-        else sceDmacMemcpy(base, frame, WIN_BYTES_COUNT);
     }
 }
 
-static u64 controls(SceCtrlData* const pad) {
+static int ajustCursor(const int value, const u8 mode) {
+    if(!mode) {
+        u16 max;
+        if(value < 0) {
+            return 0;
+        } else if(value >= (max = SPACE_SIZE / RAY_STEP)) {
+            return max - 1;
+        }
+    } else {    
+        if(value < 0) {
+            return ATOMIC_POV_COUNT - 1;
+        } else if(value >= ATOMIC_POV_COUNT) {
+            return 0;
+        }
+    }
+    return value;
+}
+
+static u64 getOffset(const int move, const int rotate) {
+    return VIEW_BYTES_COUNT * move + SPACE_BYTES_COUNT * rotate;
+}
+
+SceCtrlData pad;
+static u64 controls() {
     static int move = 0;
     static int rotate = 0;
     static SceCtrlData lpad;
     
-    sceCtrlReadBufferPositive(pad, 1);
-    if(pad->Buttons & PSP_CTRL_LEFT) { rotate--; }
-    if(pad->Buttons & PSP_CTRL_RIGHT) { rotate++; }
-    if(rotate < 0) {
-        rotate = ATOMIC_POV_COUNT - 1;
-    } else if(rotate >= ATOMIC_POV_COUNT) {
-        rotate = 0;
-    }
-        
-    if(pad->Buttons & PSP_CTRL_UP) {
-        if(move < (SPACE_SIZE / RAY_STEP) - 1) { move++; }
-    }
-    if(pad->Buttons & PSP_CTRL_DOWN) {
-        if(move > 0) { move--; }
-    }
+    sceCtrlReadBufferPositive(&pad, 1);
     
-    if((pad->Buttons & PSP_CTRL_TRIANGLE) &&
+    if(pad.Buttons & PSP_CTRL_UP) { move++; }
+    if(pad.Buttons & PSP_CTRL_DOWN) { move--; }
+    if(pad.Buttons & PSP_CTRL_LEFT) { rotate--; }
+    if(pad.Buttons & PSP_CTRL_RIGHT) { rotate++; }
+    
+    move = ajustCursor(move, 0);
+    rotate = ajustCursor(rotate, 1);
+    
+    if((pad.Buttons & PSP_CTRL_TRIANGLE) &&
         !(lpad.Buttons & PSP_CTRL_TRIANGLE)) {
         DEPTH_OF_FIELD = !DEPTH_OF_FIELD;
     }
     
-    lpad = *pad;
-    return VIEW_BYTES_COUNT * move + SPACE_BYTES_COUNT * rotate;
+    lpad = pad;
+    return getOffset(move, rotate);
 }
 
 void getOptions() {
@@ -295,11 +314,21 @@ void getOptions() {
     }
 }
 
+static u64 currentOffset = 0;
+static int keys(unsigned int args, void *argp) {
+    do {
+        if(DEPTH_OF_FIELD) {
+            currentOffset = controls();
+        }
+        sceKernelDelayThread(33333);
+    } while(!(pad.Buttons & PSP_CTRL_SELECT));
+    return 0;
+}
+
 int main() {
-    scePowerSetClockFrequency(333, 333, 166);
-    SceCtrlData pad;
-    
+    scePowerSetClockFrequency(333, 333, 166);    
     getOptions();
+    
     if(MAX_PROJECTION_DEPTH > 0.0f) {
         PROJECTION_FACTOR = 1.0f / MAX_PROJECTION_DEPTH;  
     }
@@ -312,10 +341,9 @@ int main() {
     
     u8* zpos = memalign(16, WIN_PIXELS_COUNT);
     u32* base = memalign(16, VIEW_BYTES_COUNT);
-    u32* frame = memalign(16, VIEW_BYTES_COUNT);    
+    u32* frame = memalign(16, VIEW_BYTES_COUNT);
     
-    const u32 lsize = 256;
-    void* list = memalign(16, lsize);
+    void* list = memalign(16, 256);
     
     if(MAX_PROJECTION_DEPTH > 0.0f) {
         preCalculate();
@@ -325,6 +353,12 @@ int main() {
     
     pspDebugScreenInitEx(NULL, PSP_DISPLAY_PIXEL_FORMAT_8888, 0);
     pspDebugScreenEnableBackColor(0);
+    
+    SceUID kid = sceKernelCreateThread("apov_keys", keys, 0x10, 0x1000, 0, 0);
+    if (kid >= 0){
+        sceKernelStartThread(kid, 0, 0);
+    }
+
     openCloseIo(1);
     
     int dbuff = 0;
@@ -341,10 +375,12 @@ int main() {
         
         sceGuStart(GU_DIRECT, list);
         sceGuClear(GU_COLOR_BUFFER_BIT);
+
+        if(!DEPTH_OF_FIELD) {
+            currentOffset = controls();
+        }
         
-        const u64 offset = controls(&pad);
-        
-        readIo(frame, offset);
+        readIo(frame, currentOffset);
         getView(frame, zpos, base);
         
         sceGuTexImage(0, TEXTURE_SIZE, TEXTURE_SIZE, TEXTURE_SIZE, base);
