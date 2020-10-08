@@ -91,9 +91,55 @@ typedef struct {
     int x, y;
 } Coords __attribute__((aligned(16)));
 
+
 static float* _FACTORS;
 static Coords* _COORDINATES;
 
+#define DOF_MATRIX_UNIT_COUNT 9
+typedef struct {
+    u32 *o, *a, *b, *c, *d, *e, *f, *g, *h;
+} DofMatRef __attribute__((aligned(16)));
+
+static u32* frame;
+static float* _DOF;
+static DofMatRef* _DOF_MATRIX_REFS;
+
+void preCalcDof() {    
+    _DOF_MATRIX_REFS = memalign(16, WIN_PIXELS_COUNT * sizeof(DofMatRef));
+    
+    const u8 size = 3;
+    u32 x = WIN_WIDTH;
+    while(x--) {
+        u32 y = WIN_HEIGHT;
+        while(y--) {
+            int xr = x + size >= WIN_WIDTH ? 0 : size;
+            int xl = x - size < 0 ? 0 : -size;
+            int yd = y + size >= WIN_HEIGHT ? 0 : size;
+            int yu = y - size < 0 ? 0 : -size;
+            DofMatRef* const m = &_DOF_MATRIX_REFS[x | y << 8];
+            m->o = &frame[x | y << 8];
+            m->a = &frame[(x + xr) | y << 8];
+            m->b = &frame[(x + xl) | y << 8];
+            m->c = &frame[x | (y + yd) << 8];
+            m->d = &frame[x | (y + yu) << 8];
+            m->e = &frame[(x + xr) | (y + yd) << 8];
+            m->f = &frame[(x + xl) | (y + yd) << 8];
+            m->g = &frame[(x + xr) | (y + yu) << 8];
+            m->h = &frame[(x + xl) | (y + yu) << 8];     
+        }
+    }
+    
+    _DOF = memalign(16, 256 * sizeof(float));
+    u16 depth = 256;
+    const float maxdof = 127.0f;
+    while(depth--) {
+        if(depth >= maxdof) {
+            _DOF[depth] = 0;
+        } else {
+            _DOF[depth] = (maxdof - depth)/maxdof;
+        }
+    }
+}
 void preCalculate() {
     _FACTORS = memalign(16, 256 * sizeof(float));
     _COORDINATES = memalign(16, WIN_PIXELS_COUNT * sizeof(Coords));
@@ -185,69 +231,52 @@ void getView(u32* const frame, u8* const zpos, u32* const base) {
     } else {
         if(DEPTH_OF_FIELD) {
             memset(base, 0, VIEW_BYTES_COUNT);
-            u32 x = WIN_WIDTH - 3;
-            while(--x > 2) {
-                u32 y = WIN_HEIGHT - 3;
-                while(--y > 2) {
-                        u32 const o = frame[x | y << 8];
-                        u32 const a = frame[(x + 3) | y << 8];
-                        u32 const b = frame[(x - 3) | y << 8];
-                        u32 const c = frame[x | (y + 3) << 8];
-                        u32 const d = frame[x | (y - 3) << 8];
+            u32 i = WIN_PIXELS_COUNT;
+            while(--i) {
+                DofMatRef* const m = &_DOF_MATRIX_REFS[i];
+                u32 const o = *m->o;
+                u32 const a = *m->a;
+                u32 const b = *m->b;
+                u32 const c = *m->c;
+                u32 const d = *m->d;
+                u32 const e = *m->e;
+                u32 const f = *m->f;
+                u32 const g = *m->g;
+                u32 const h = *m->h;
+                
+                if(o || a || b || c || d || e || f || g || h) {
+                    const u8 n =
+                        (a ? 1 : 0) + (b ? 1 : 0) + (c ? 1 : 0) +
+                        (d ? 1 : 0) + (e ? 1 : 0) + (f ? 1 : 0) +
+                        (g ? 1 : 0) + (h ? 1 : 0);
+                    
+                    const int dd = n ? ((
+                        (a >> 24) + (b >> 24) + (c >> 24) +
+                        (d >> 24) + (e >> 24) + (f >> 24) +
+                        (g >> 24) + (h >> 24)
+                    ) / n) - (o >> 24) : 0;
+                    
+                    if(dd >= -10 && dd <= 10) {
+                        const u8 _R = (
+                            (o & 0x000000FF) + (a & 0x000000FF) + (b & 0x000000FF) +
+                            (c & 0x000000FF) + (d & 0x000000FF) + (e & 0x000000FF) +
+                            (f & 0x000000FF) + (g & 0x000000FF) + (h & 0x000000FF)) / 9;
+                        const u8 _G = (
+                            ((o & 0x0000FF00) >> 8) + ((a & 0x0000FF00) >> 8) + ((b & 0x0000FF00) >> 8) +
+                            ((c & 0x0000FF00) >> 8) + ((d & 0x0000FF00) >> 8) + ((e & 0x0000FF00) >> 8) +
+                            ((f & 0x0000FF00) >> 8) + ((g & 0x0000FF00) >> 8) + ((h & 0x0000FF00) >> 8)) / 9;
+                        const u8 _B = (
+                            ((o & 0x00FF0000) >> 16) + ((a & 0x00FF0000) >> 16) + ((b & 0x00FF0000) >> 16) +
+                            ((c & 0x00FF0000) >> 16) + ((d & 0x00FF0000) >> 16) + ((e & 0x00FF0000) >> 16) +
+                            ((f & 0x00FF0000) >> 16) + ((g & 0x00FF0000) >> 16) + ((h & 0x00FF0000) >> 16)) / 9;
                         
-                        u32 const e = frame[(x + 2) | (y + 2) << 8];
-                        u32 const f = frame[(x - 2) | (y + 2) << 8];
-                        u32 const g = frame[(x + 2) | (y + 2) << 8];
-                        u32 const h = frame[(x - 2) | (y - 2) << 8];
-                            
-                    if(o || a || b || c || d || e || f || g || h) {
+                        const float m = _DOF[o >> 24];
+                        const u8 R = m * (o & 0x000000FF) +  (1 - m) * _R;
+                        const u8 G = m * ((o & 0x0000FF00) >> 8) + (1 - m) * _G;
+                        const u8 B = m * ((o & 0x00FF0000) >> 16) + (1 - m) * _B;
                         
-                        u8 n =
-                            (a ? 1 : 0) +
-                            (b ? 1 : 0) +
-                            (c ? 1 : 0) +
-                            (d ? 1 : 0) +
-                            (e ? 1 : 0) +
-                            (f ? 1 : 0) +
-                            (g ? 1 : 0) +
-                            (h ? 1 : 0);
-                        
-                        const int dd = n ? ((
-                            ((a & 0xFF000000) >> 24) +
-                            ((b & 0xFF000000) >> 24) +
-                            ((c & 0xFF000000) >> 24) +
-                            ((d & 0xFF000000) >> 24) +
-                            ((e & 0xFF000000) >> 24) +
-                            ((f & 0xFF000000) >> 24) +
-                            ((g & 0xFF000000) >> 24) +
-                            ((h & 0xFF000000) >> 24)
-                        ) / n) - ((o & 0xFF000000) >> 24) : 0;
-                        
-                        if(dd >= -20 && dd <= 20) {                            
-                            const u8 _R = (
-                                (o & 0x000000FF) + (a & 0x000000FF) + (b & 0x000000FF) + (c & 0x000000FF) + (d & 0x000000FF) +
-                                (e & 0x000000FF) + (f & 0x000000FF) + (g & 0x000000FF) + (h & 0x000000FF)) / 9;
-                                
-                            const u8 _G = (
-                                ((o & 0x0000FF00) >> 8) + ((a & 0x0000FF00) >> 8) + ((b & 0x0000FF00) >> 8) + ((c & 0x0000FF00) >> 8) + ((d & 0x0000FF00) >> 8) +
-                                ((e & 0x0000FF00) >> 8) + ((f & 0x0000FF00) >> 8) + ((g & 0x0000FF00) >> 8) + ((h & 0x0000FF00) >> 8)) / 9;
-                                
-                            const u8 _B = (
-                                ((o & 0x00FF0000) >> 16) + ((a & 0x00FF0000) >> 16) + ((b & 0x00FF0000) >> 16) + ((c & 0x00FF0000) >> 16) + ((d & 0x00FF0000) >> 16) +
-                                ((e & 0x00FF0000) >> 16) + ((f & 0x00FF0000) >> 16) + ((g & 0x00FF0000) >> 16) + ((h & 0x00FF0000) >> 16)) / 9;
-                        
-                            const float maxdof = 127.0f;
-                            float depth = ((o & 0xFF000000) >> 24);
-                            if(depth > maxdof) { depth = maxdof; }
-                            
-                            const float m = (maxdof - depth)/maxdof;                            
-                            const u8 R = m * (o & 0x000000FF) +  (1 - m) * _R;
-                            const u8 G = m * ((o & 0x0000FF00) >> 8) + (1 - m) * _G;
-                            const u8 B = m * ((o & 0x00FF0000) >> 16) + (1 - m) * _B;
-                            
-                            base[x | y << 8] = 0xFF000000 | (B << 16) | (G << 8) | R;
-                        } else base[x | y << 8] = 0xFF000000 | o;
-                    }
+                        base[i] = 0xFF000000 | (B << 16) | (G << 8) | R;
+                    } else base[i] = 0xFF000000 | o;
                 }
             }
         } else {
@@ -315,17 +344,6 @@ void getOptions() {
     }
 }
 
-static u64 currentOffset = 0;
-static int keys(unsigned int args, void *argp) {
-    do {
-        if(DEPTH_OF_FIELD) {
-            currentOffset = controls();
-        }
-        sceKernelDelayThread(33333);
-    } while(!(pad.Buttons & PSP_CTRL_SELECT));
-    return 0;
-}
-
 int main() {
     scePowerSetClockFrequency(333, 333, 166);    
     getOptions();
@@ -342,24 +360,21 @@ int main() {
     
     u8* zpos = memalign(16, WIN_PIXELS_COUNT);
     u32* base = memalign(16, VIEW_BYTES_COUNT);
-    u32* frame = memalign(16, VIEW_BYTES_COUNT);
+    frame = memalign(16, VIEW_BYTES_COUNT);
     
     void* list = memalign(16, 256);
     
     if(MAX_PROJECTION_DEPTH > 0.0f) {
         preCalculate();
     }
+    
+    preCalcDof();
     sceGuInit();
     initGuContext(list);
     
     pspDebugScreenInitEx(NULL, PSP_DISPLAY_PIXEL_FORMAT_8888, 0);
     pspDebugScreenEnableBackColor(0);
     
-    SceUID kid = sceKernelCreateThread("apov_keys", keys, 0x10, 0x1000, 0, 0);
-    if (kid >= 0){
-        sceKernelStartThread(kid, 0, 0);
-    }
-
     openCloseIo(1);
     
     int dbuff = 0;
@@ -375,12 +390,8 @@ int main() {
         
         sceGuStart(GU_DIRECT, list);
         sceGuClear(GU_COLOR_BUFFER_BIT);
-
-        if(!DEPTH_OF_FIELD) {
-            currentOffset = controls();
-        }
         
-        readIo(frame, currentOffset);
+        readIo(frame, controls());
         getView(frame, zpos, base);
         
         sceGuTexImage(0, TEXTURE_SIZE, TEXTURE_SIZE, TEXTURE_SIZE, base);
@@ -406,6 +417,8 @@ int main() {
     free(zpos);
     free(base);
     free(frame);
+    free(_DOF);
+    free(_DOF_MATRIX_REFS);
     free(_FACTORS);
     free(_COORDINATES);
     
