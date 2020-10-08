@@ -184,6 +184,7 @@ void getView(u32* const frame, u8* const zpos, u32* const base) {
         }
     } else {
         if(DEPTH_OF_FIELD) {
+            memset(base, 0, VIEW_BYTES_COUNT);
             u32 x = WIN_WIDTH - 3;
             while(--x > 2) {
                 u32 y = WIN_HEIGHT - 3;
@@ -371,7 +372,6 @@ int main() {
         if(MAX_PROJECTION_DEPTH > 0.0f) {
             memset(zpos, 0, WIN_PIXELS_COUNT);
         }
-        memset(base, 0, VIEW_BYTES_COUNT);
         
         sceGuStart(GU_DIRECT, list);
         sceGuClear(GU_COLOR_BUFFER_BIT);
@@ -395,6 +395,7 @@ int main() {
         pspDebugScreenSetTextColor(0xFF00A0FF);
         pspDebugScreenPrintf("Fps: %llu, DOF: %s\n", fps, DEPTH_OF_FIELD ? "on" : "off");
         pspDebugScreenPrintf("List size: %llu bytes.\n", size);
+        
         dbuff = (int)sceGuSwapBuffers();
         
         sceRtcGetCurrentTick(&now);
