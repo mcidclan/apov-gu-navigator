@@ -118,10 +118,10 @@ void preCalcDof() {
             int yu = y - size < 0 ? 0 : -size;
             DofMatRef* const m = &_DOF_MATRIX_REFS[x | y << 8];
             m->o = &frame[x | y << 8];
-            m->a = &frame[(x + xr) | y << 8];
-            m->b = &frame[(x + xl) | y << 8];
-            m->c = &frame[x | (y + yd) << 8];
-            m->d = &frame[x | (y + yu) << 8];
+            m->a = &frame[(x + xr - 1) | y << 8];
+            m->b = &frame[(x + xl + 1) | y << 8];
+            m->c = &frame[x | (y + yd - 1) << 8];
+            m->d = &frame[x | (y + yu + 1) << 8];
             m->e = &frame[(x + xr) | (y + yd) << 8];
             m->f = &frame[(x + xl) | (y + yd) << 8];
             m->g = &frame[(x + xr) | (y + yu) << 8];
