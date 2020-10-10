@@ -20,6 +20,7 @@
 #define SCREEN_HEIGHT 272
 
 #define SPACE_SIZE 256
+#define SPACE_BLOCK_COUNT 2
 #define COLOR_BYTES_COUNT 4
 
 PSP_MODULE_INFO("APoV", 0, 1, 0);
@@ -291,7 +292,7 @@ static int ajustCursor(const int value, const u8 mode) {
         u16 max;
         if(value < 0) {
             return 0;
-        } else if(value >= (max = SPACE_SIZE / RAY_STEP)) {
+        } else if(value >= (max = (SPACE_SIZE * SPACE_BLOCK_COUNT) / RAY_STEP)) {
             return max - 1;
         }
     } else {    
@@ -356,7 +357,7 @@ int main() {
     WIN_PIXELS_COUNT = WIN_WIDTH * WIN_HEIGHT;
     WIN_BYTES_COUNT = WIN_PIXELS_COUNT * COLOR_BYTES_COUNT;
     VIEW_BYTES_COUNT = WIN_PIXELS_COUNT * sizeof(u32);
-    SPACE_BYTES_COUNT = (SPACE_SIZE / RAY_STEP) * VIEW_BYTES_COUNT;
+    SPACE_BYTES_COUNT = ((SPACE_SIZE * SPACE_BLOCK_COUNT) / RAY_STEP) * VIEW_BYTES_COUNT;
     
     u8* zpos = memalign(16, WIN_PIXELS_COUNT);
     u32* base = memalign(16, VIEW_BYTES_COUNT);
