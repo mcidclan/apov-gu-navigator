@@ -204,7 +204,7 @@ static void initGuContext(void* list) {
     sceGuDispBuffer(SCREEN_WIDTH, SCREEN_HEIGHT, (void*)(sizeof(u32) *
     BUFFER_WIDTH * SCREEN_HEIGHT) , BUFFER_WIDTH);
     
-    sceGuClearColor(0xFF404040);
+    sceGuClearColor(0xFF000000);
     sceGuDisable(GU_SCISSOR_TEST);
     sceGuEnable(GU_CULL_FACE);
     sceGuFrontFace(GU_CW);
