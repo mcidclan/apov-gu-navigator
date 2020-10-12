@@ -14,14 +14,10 @@
 #include <psppower.h>
 #include <pspdisplay.h>
 
+#define TEXTURE_BLOCK_SIZE 256
 #define BUFFER_WIDTH 512
-#define TEXTURE_SIZE 256
 #define SCREEN_WIDTH 480
 #define SCREEN_HEIGHT 272
-
-#define SPACE_SIZE 256
-#define SPACE_BLOCK_COUNT 2
-#define COLOR_BYTES_COUNT 4
 
 PSP_MODULE_INFO("APoV", 0, 1, 0);
 PSP_MAIN_THREAD_ATTR(THREAD_ATTR_USER | THREAD_ATTR_VFPU);
@@ -35,56 +31,96 @@ typedef struct Vertex {
 	u16 x, y, z;
 } Vertex __attribute__((aligned(16)));
 
-#define S TEXTURE_SIZE / 2
-#define T TEXTURE_SIZE / 2
-#define X 112
+#define S TEXTURE_BLOCK_SIZE
+#define P S / 2
+#define T S / 2
+#define X -16
 #define Y 8
-static const Vertex __attribute__((aligned(16))) quad[24] = {
-    {0, T, 0xFFFFFFFF, X+0, Y+S, 0},
+
+static u16 TEXTURE_WIDTH;
+static const Vertex __attribute__((aligned(16))) quad[48] = {
+    
+    // Left
+    
+    {0, T, 0xFFFFFFFF, X+0, Y+P, 0},
     {0, 0, 0xFFFFFFFF, X+0, Y+0, 0},
-    {T, 0, 0xFFFFFFFF, X+S, Y+0, 0},
-    {T, 0, 0xFFFFFFFF, X+S, Y+0, 0},
-    {T, T, 0xFFFFFFFF, X+S, Y+S, 0},
-    {0, T, 0xFFFFFFFF, X+0, Y+S, 0},
+    {T, 0, 0xFFFFFFFF, X+P, Y+0, 0},
+    {T, 0, 0xFFFFFFFF, X+P, Y+0, 0},
+    {T, T, 0xFFFFFFFF, X+P, Y+P, 0},
+    {0, T, 0xFFFFFFFF, X+0, Y+P, 0},
     //
-    {T,   T,   0xFFFFFFFF, X+S,   Y+S, 0},
-    {T,   0,   0xFFFFFFFF, X+S,   Y+0, 0},
-    {T+T, 0,   0xFFFFFFFF, X+S+S, Y+0, 0},
-    {T+T, 0,   0xFFFFFFFF, X+S+S, Y+0, 0},
-    {T+T, T,   0xFFFFFFFF, X+S+S, Y+S, 0},
-    {T,   T,   0xFFFFFFFF, X+S,   Y+S, 0},
+    {T,   T,   0xFFFFFFFF, X+P,   Y+P, 0},
+    {T,   0,   0xFFFFFFFF, X+P,   Y+0, 0},
+    {T+T, 0,   0xFFFFFFFF, X+P+P, Y+0, 0},
+    {T+T, 0,   0xFFFFFFFF, X+P+P, Y+0, 0},
+    {T+T, T,   0xFFFFFFFF, X+P+P, Y+P, 0},
+    {T,   T,   0xFFFFFFFF, X+P,   Y+P, 0},
     //
-    {0, T+T, 0xFFFFFFFF, X+0, Y+S+S, 0},
-    {0, T,   0xFFFFFFFF, X+0, Y+S,   0},
-    {T, T,   0xFFFFFFFF, X+S, Y+S,   0},
-    {T, T,   0xFFFFFFFF, X+S, Y+S,   0},
-    {T, T+T, 0xFFFFFFFF, X+S, Y+S+S, 0},
-    {0, T+T, 0xFFFFFFFF, X+0, Y+S+S, 0},
+    {0, T+T, 0xFFFFFFFF, X+0, Y+P+P, 0},
+    {0, T,   0xFFFFFFFF, X+0, Y+P,   0},
+    {T, T,   0xFFFFFFFF, X+P, Y+P,   0},
+    {T, T,   0xFFFFFFFF, X+P, Y+P,   0},
+    {T, T+T, 0xFFFFFFFF, X+P, Y+P+P, 0},
+    {0, T+T, 0xFFFFFFFF, X+0, Y+P+P, 0},
     //
-    {T,   T+T, 0xFFFFFFFF, X+S,   Y+S+S, 0},
-    {T,   T,   0xFFFFFFFF, X+S,   Y+S,   0},
-    {T+T, T,   0xFFFFFFFF, X+S+S, Y+S,   0},
-    {T+T, T,   0xFFFFFFFF, X+S+S, Y+S,   0},
-    {T+T, T+T, 0xFFFFFFFF, X+S+S, Y+S+S, 0},
-    {T,   T+T, 0xFFFFFFFF, X+S,   Y+S+S, 0},
+    {T,   T+T, 0xFFFFFFFF, X+P,   Y+P+P, 0},
+    {T,   T,   0xFFFFFFFF, X+P,   Y+P,   0},
+    {T+T, T,   0xFFFFFFFF, X+P+P, Y+P,   0},
+    {T+T, T,   0xFFFFFFFF, X+P+P, Y+P,   0},
+    {T+T, T+T, 0xFFFFFFFF, X+P+P, Y+P+P, 0},
+    {T,   T+T, 0xFFFFFFFF, X+P,   Y+P+P, 0},
+    
+    // Right
+    
+    {S+0, T, 0xFFFFFFFF, S+X+0, Y+P, 0},
+    {S+0, 0, 0xFFFFFFFF, S+X+0, Y+0, 0},
+    {S+T, 0, 0xFFFFFFFF, S+X+P, Y+0, 0},
+    {S+T, 0, 0xFFFFFFFF, S+X+P, Y+0, 0},
+    {S+T, T, 0xFFFFFFFF, S+X+P, Y+P, 0},
+    {S+0, T, 0xFFFFFFFF, S+X+0, Y+P, 0},
+    //
+    {S+T,   T,   0xFFFFFFFF, S+X+P,   Y+P, 0},
+    {S+T,   0,   0xFFFFFFFF, S+X+P,   Y+0, 0},
+    {S+T+T, 0,   0xFFFFFFFF, S+X+P+P, Y+0, 0},
+    {S+T+T, 0,   0xFFFFFFFF, S+X+P+P, Y+0, 0},
+    {S+T+T, T,   0xFFFFFFFF, S+X+P+P, Y+P, 0},
+    {S+T,   T,   0xFFFFFFFF, S+X+P,   Y+P, 0},
+    //
+    {S+0, T+T, 0xFFFFFFFF, S+X+0, Y+P+P, 0},
+    {S+0, T,   0xFFFFFFFF, S+X+0, Y+P,   0},
+    {S+T, T,   0xFFFFFFFF, S+X+P, Y+P,   0},
+    {S+T, T,   0xFFFFFFFF, S+X+P, Y+P,   0},
+    {S+T, T+T, 0xFFFFFFFF, S+X+P, Y+P+P, 0},
+    {S+0, T+T, 0xFFFFFFFF, S+X+0, Y+P+P, 0},
+    //
+    {S+T,   T+T, 0xFFFFFFFF, S+X+P,   Y+P+P, 0},
+    {S+T,   T,   0xFFFFFFFF, S+X+P,   Y+P,   0},
+    {S+T+T, T,   0xFFFFFFFF, S+X+P+P, Y+P,   0},
+    {S+T+T, T,   0xFFFFFFFF, S+X+P+P, Y+P,   0},
+    {S+T+T, T+T, 0xFFFFFFFF, S+X+P+P, Y+P+P, 0},
+    {S+T,   T+T, 0xFFFFFFFF, S+X+P,   Y+P+P, 0},
 };
+
 
 static u8 DEPTH_OF_FIELD = 0;
 
+#define SPACE_BLOCK_SIZE 256
+#define WIDTH_BLOCK_COUNT 2
+#define SPACE_Y_OFFSET 9
+
+static u32 DEPTH_BLOCK_COUNT = 1;
 static u32 RAY_STEP = 1;
 static u32 ATOMIC_POV_COUNT = 4;
 static float MAX_PROJECTION_DEPTH = 0.0f;
-static const u32 BASE_BYTES_COUNT = TEXTURE_SIZE * SCREEN_HEIGHT * sizeof(u32);
-
 static float PROJECTION_FACTOR;
-static const u16 WIN_WIDTH = SPACE_SIZE;
-static const u16 WIN_HEIGHT = SPACE_SIZE;
 
+static u16 WIN_WIDTH;
+static u16 WIN_HEIGHT = SPACE_BLOCK_SIZE;
 static u16 WIN_WIDTH_D2;
 static u16 WIN_HEIGHT_D2;
+
 static u32 WIN_PIXELS_COUNT;
-static u32 WIN_BYTES_COUNT;
-static u32 VIEW_BYTES_COUNT;
+static u32 FRAME_BYTES_COUNT;
 static u32 SPACE_BYTES_COUNT;
 
 // Pre-calculation Processes
@@ -117,16 +153,16 @@ void preCalcDof() {
             int xl = x - size < 0 ? 0 : -size;
             int yd = y + size >= WIN_HEIGHT ? 0 : size;
             int yu = y - size < 0 ? 0 : -size;
-            DofMatRef* const m = &_DOF_MATRIX_REFS[x | y << 8];
-            m->o = &frame[x | y << 8];
-            m->a = &frame[(x + xr - 1) | y << 8];
-            m->b = &frame[(x + xl + 1) | y << 8];
-            m->c = &frame[x | (y + yd - 1) << 8];
-            m->d = &frame[x | (y + yu + 1) << 8];
-            m->e = &frame[(x + xr) | (y + yd) << 8];
-            m->f = &frame[(x + xl) | (y + yd) << 8];
-            m->g = &frame[(x + xr) | (y + yu) << 8];
-            m->h = &frame[(x + xl) | (y + yu) << 8];     
+            DofMatRef* const m = &_DOF_MATRIX_REFS[x | y << SPACE_Y_OFFSET];
+            m->o = &frame[x | y << SPACE_Y_OFFSET];
+            m->a = &frame[(x + xr - 1) | y << SPACE_Y_OFFSET];
+            m->b = &frame[(x + xl + 1) | y << SPACE_Y_OFFSET];
+            m->c = &frame[x | (y + yd - 1) << SPACE_Y_OFFSET];
+            m->d = &frame[x | (y + yu + 1) << SPACE_Y_OFFSET];
+            m->e = &frame[(x + xr) | (y + yd) << SPACE_Y_OFFSET];
+            m->f = &frame[(x + xl) | (y + yd) << SPACE_Y_OFFSET];
+            m->g = &frame[(x + xr) | (y + yu) << SPACE_Y_OFFSET];
+            m->h = &frame[(x + xl) | (y + yu) << SPACE_Y_OFFSET];
         }
     }
     
@@ -168,7 +204,7 @@ static void initGuContext(void* list) {
     sceGuDispBuffer(SCREEN_WIDTH, SCREEN_HEIGHT, (void*)(sizeof(u32) *
     BUFFER_WIDTH * SCREEN_HEIGHT) , BUFFER_WIDTH);
     
-    sceGuClearColor(0xFF000000);
+    sceGuClearColor(0xFF404040);
     sceGuDisable(GU_SCISSOR_TEST);
     sceGuEnable(GU_CULL_FACE);
     sceGuFrontFace(GU_CW);
@@ -231,7 +267,7 @@ void getView(u32* const frame, u8* const zpos, u32* const base) {
         }
     } else {
         if(DEPTH_OF_FIELD) {
-            memset(base, 0, VIEW_BYTES_COUNT);
+            memset(base, 0, FRAME_BYTES_COUNT);
             u32 i = WIN_PIXELS_COUNT;
             while(--i) {
                 DofMatRef* const m = &_DOF_MATRIX_REFS[i];
@@ -282,7 +318,7 @@ void getView(u32* const frame, u8* const zpos, u32* const base) {
             }
         } else {
             sceKernelDcacheWritebackAll();
-            sceDmacMemcpy(base, frame, WIN_BYTES_COUNT);
+            sceDmacMemcpy(base, frame, FRAME_BYTES_COUNT);
         }
     }
 }
@@ -292,7 +328,7 @@ static int ajustCursor(const int value, const u8 mode) {
         u16 max;
         if(value < 0) {
             return 0;
-        } else if(value >= (max = (SPACE_SIZE * SPACE_BLOCK_COUNT) / RAY_STEP)) {
+        } else if(value >= (max = (SPACE_BLOCK_SIZE * DEPTH_BLOCK_COUNT) / RAY_STEP)) {
             return max - 1;
         }
     } else {    
@@ -306,7 +342,7 @@ static int ajustCursor(const int value, const u8 mode) {
 }
 
 static u64 getOffset(const int move, const int rotate) {
-    return VIEW_BYTES_COUNT * move + SPACE_BYTES_COUNT * rotate;
+    return FRAME_BYTES_COUNT * move + SPACE_BYTES_COUNT * rotate;
 }
 
 SceCtrlData pad;
@@ -339,8 +375,11 @@ void getOptions() {
     if(f != NULL) {
         char* options = (char*)memalign(16, 32);
         fgets(options, 32, f);
-        sscanf(options, "%f %u %u",
-        &MAX_PROJECTION_DEPTH, &ATOMIC_POV_COUNT, &RAY_STEP);
+        sscanf(options, "%f %u %u %u",
+            &MAX_PROJECTION_DEPTH,
+            &ATOMIC_POV_COUNT,
+            &RAY_STEP,
+            &DEPTH_BLOCK_COUNT);
         fclose(f);
     }
 }
@@ -352,16 +391,18 @@ int main() {
     if(MAX_PROJECTION_DEPTH > 0.0f) {
         PROJECTION_FACTOR = 1.0f / MAX_PROJECTION_DEPTH;  
     }
+    
+    WIN_WIDTH = SPACE_BLOCK_SIZE * WIDTH_BLOCK_COUNT;
     WIN_WIDTH_D2 = WIN_WIDTH / 2;
     WIN_HEIGHT_D2 = WIN_HEIGHT / 2;
     WIN_PIXELS_COUNT = WIN_WIDTH * WIN_HEIGHT;
-    WIN_BYTES_COUNT = WIN_PIXELS_COUNT * COLOR_BYTES_COUNT;
-    VIEW_BYTES_COUNT = WIN_PIXELS_COUNT * sizeof(u32);
-    SPACE_BYTES_COUNT = ((SPACE_SIZE * SPACE_BLOCK_COUNT) / RAY_STEP) * VIEW_BYTES_COUNT;
-    
+    FRAME_BYTES_COUNT = WIN_PIXELS_COUNT * sizeof(u32);
+    SPACE_BYTES_COUNT = ((DEPTH_BLOCK_COUNT * SPACE_BLOCK_SIZE) / RAY_STEP) * FRAME_BYTES_COUNT;    
+    TEXTURE_WIDTH = TEXTURE_BLOCK_SIZE * WIDTH_BLOCK_COUNT;
+
     u8* zpos = memalign(16, WIN_PIXELS_COUNT);
-    u32* base = memalign(16, VIEW_BYTES_COUNT);
-    frame = memalign(16, VIEW_BYTES_COUNT);
+    u32* base = memalign(16, FRAME_BYTES_COUNT);
+    frame = memalign(16, FRAME_BYTES_COUNT);
     
     void* list = memalign(16, 256);
     
@@ -395,9 +436,9 @@ int main() {
         readIo(frame, controls());
         getView(frame, zpos, base);
         
-        sceGuTexImage(0, TEXTURE_SIZE, TEXTURE_SIZE, TEXTURE_SIZE, base);
+        sceGuTexImage(0, TEXTURE_WIDTH, TEXTURE_BLOCK_SIZE, TEXTURE_WIDTH, base);
         sceGumDrawArray(GU_TRIANGLES, GU_TEXTURE_16BIT|GU_COLOR_8888|
-		GU_TRANSFORM_2D|GU_VERTEX_16BIT, 24, 0, quad);
+		GU_TRANSFORM_2D|GU_VERTEX_16BIT, 48, 0, quad);
         
         size = sceGuFinish();
         sceGuSync(GU_SYNC_FINISH, GU_SYNC_WHAT_DONE);
