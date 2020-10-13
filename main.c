@@ -32,93 +32,57 @@ typedef struct Vertex {
 } Vertex __attribute__((aligned(16)));
 
 #define S TEXTURE_BLOCK_SIZE
-#define P S / 2
-#define T S / 2
-#define X -16
-#define Y 8
+#define P (S / 8)
+#define T (S / 8)
 
+static u16 VERTICES_COUNT;
 static u16 TEXTURE_WIDTH;
-static const Vertex __attribute__((aligned(16))) quad[48] = {
-    
-    // Left
-    
-    {0, T, 0xFFFFFFFF, X+0, Y+P, 0},
-    {0, 0, 0xFFFFFFFF, X+0, Y+0, 0},
-    {T, 0, 0xFFFFFFFF, X+P, Y+0, 0},
-    {T, 0, 0xFFFFFFFF, X+P, Y+0, 0},
-    {T, T, 0xFFFFFFFF, X+P, Y+P, 0},
-    {0, T, 0xFFFFFFFF, X+0, Y+P, 0},
-    //
-    {T,   T,   0xFFFFFFFF, X+P,   Y+P, 0},
-    {T,   0,   0xFFFFFFFF, X+P,   Y+0, 0},
-    {T+T, 0,   0xFFFFFFFF, X+P+P, Y+0, 0},
-    {T+T, 0,   0xFFFFFFFF, X+P+P, Y+0, 0},
-    {T+T, T,   0xFFFFFFFF, X+P+P, Y+P, 0},
-    {T,   T,   0xFFFFFFFF, X+P,   Y+P, 0},
-    //
-    {0, T+T, 0xFFFFFFFF, X+0, Y+P+P, 0},
-    {0, T,   0xFFFFFFFF, X+0, Y+P,   0},
-    {T, T,   0xFFFFFFFF, X+P, Y+P,   0},
-    {T, T,   0xFFFFFFFF, X+P, Y+P,   0},
-    {T, T+T, 0xFFFFFFFF, X+P, Y+P+P, 0},
-    {0, T+T, 0xFFFFFFFF, X+0, Y+P+P, 0},
-    //
-    {T,   T+T, 0xFFFFFFFF, X+P,   Y+P+P, 0},
-    {T,   T,   0xFFFFFFFF, X+P,   Y+P,   0},
-    {T+T, T,   0xFFFFFFFF, X+P+P, Y+P,   0},
-    {T+T, T,   0xFFFFFFFF, X+P+P, Y+P,   0},
-    {T+T, T+T, 0xFFFFFFFF, X+P+P, Y+P+P, 0},
-    {T,   T+T, 0xFFFFFFFF, X+P,   Y+P+P, 0},
-    
-    // Right
-    
-    {S+0, T, 0xFFFFFFFF, S+X+0, Y+P, 0},
-    {S+0, 0, 0xFFFFFFFF, S+X+0, Y+0, 0},
-    {S+T, 0, 0xFFFFFFFF, S+X+P, Y+0, 0},
-    {S+T, 0, 0xFFFFFFFF, S+X+P, Y+0, 0},
-    {S+T, T, 0xFFFFFFFF, S+X+P, Y+P, 0},
-    {S+0, T, 0xFFFFFFFF, S+X+0, Y+P, 0},
-    //
-    {S+T,   T,   0xFFFFFFFF, S+X+P,   Y+P, 0},
-    {S+T,   0,   0xFFFFFFFF, S+X+P,   Y+0, 0},
-    {S+T+T, 0,   0xFFFFFFFF, S+X+P+P, Y+0, 0},
-    {S+T+T, 0,   0xFFFFFFFF, S+X+P+P, Y+0, 0},
-    {S+T+T, T,   0xFFFFFFFF, S+X+P+P, Y+P, 0},
-    {S+T,   T,   0xFFFFFFFF, S+X+P,   Y+P, 0},
-    //
-    {S+0, T+T, 0xFFFFFFFF, S+X+0, Y+P+P, 0},
-    {S+0, T,   0xFFFFFFFF, S+X+0, Y+P,   0},
-    {S+T, T,   0xFFFFFFFF, S+X+P, Y+P,   0},
-    {S+T, T,   0xFFFFFFFF, S+X+P, Y+P,   0},
-    {S+T, T+T, 0xFFFFFFFF, S+X+P, Y+P+P, 0},
-    {S+0, T+T, 0xFFFFFFFF, S+X+0, Y+P+P, 0},
-    //
-    {S+T,   T+T, 0xFFFFFFFF, S+X+P,   Y+P+P, 0},
-    {S+T,   T,   0xFFFFFFFF, S+X+P,   Y+P,   0},
-    {S+T+T, T,   0xFFFFFFFF, S+X+P+P, Y+P,   0},
-    {S+T+T, T,   0xFFFFFFFF, S+X+P+P, Y+P,   0},
-    {S+T+T, T+T, 0xFFFFFFFF, S+X+P+P, Y+P+P, 0},
-    {S+T,   T+T, 0xFFFFFFFF, S+X+P,   Y+P+P, 0},
-};
+static Vertex* quad;
 
-
-static u8 DEPTH_OF_FIELD = 0;
+void generateRenderSurface() {
+    VERTICES_COUNT = 6 * (TEXTURE_BLOCK_SIZE / P) * (TEXTURE_WIDTH / P);
+    quad = memalign(16, sizeof(Vertex) * VERTICES_COUNT);
+    const u16 X = (SCREEN_WIDTH - TEXTURE_WIDTH) / 2;
+    const u16 Y = (SCREEN_HEIGHT - TEXTURE_BLOCK_SIZE) / 2;
+    u16 x = 0;
+    u16 offset = 0;
+    while(x < TEXTURE_WIDTH) {
+        u16 y = 0;
+        while(y < TEXTURE_BLOCK_SIZE) {
+            const Vertex a = {x,   y+T, 0xFFFFFFFF, X+x,   Y+y+P, 0};
+            const Vertex b = {x,   y,   0xFFFFFFFF, X+x,   Y+y,   0};
+            const Vertex c = {x+T, y,   0xFFFFFFFF, X+x+P, Y+y,   0};
+            const Vertex d = {x+T, y,   0xFFFFFFFF, X+x+P, Y+y,   0};
+            const Vertex e = {x+T, y+T, 0xFFFFFFFF, X+x+P, Y+y+P, 0};
+            const Vertex f = {x,   y+T, 0xFFFFFFFF, X+x,   Y+y+P, 0};
+            
+            quad[offset + 0] = a;
+            quad[offset + 1] = b;
+            quad[offset + 2] = c;
+            quad[offset + 3] = d;
+            quad[offset + 4] = e;
+            quad[offset + 5] = f;
+            
+            offset += 6;
+            y += P;
+        }
+        x += P;
+    }
+}
 
 #define SPACE_BLOCK_SIZE 256
-#define WIDTH_BLOCK_COUNT 2
-#define SPACE_Y_OFFSET 9
-
+static u8 DEPTH_OF_FIELD = 0;
+static u32 WIDTH_BLOCK_COUNT = 1;
 static u32 DEPTH_BLOCK_COUNT = 1;
 static u32 RAY_STEP = 1;
 static u32 ATOMIC_POV_COUNT = 4;
 static float MAX_PROJECTION_DEPTH = 0.0f;
 static float PROJECTION_FACTOR;
-
+static u8 SPACE_Y_OFFSET;
 static u16 WIN_WIDTH;
 static u16 WIN_HEIGHT = SPACE_BLOCK_SIZE;
 static u16 WIN_WIDTH_D2;
 static u16 WIN_HEIGHT_D2;
-
 static u32 WIN_PIXELS_COUNT;
 static u32 FRAME_BYTES_COUNT;
 static u32 SPACE_BYTES_COUNT;
@@ -351,7 +315,7 @@ static u64 controls() {
     static int rotate = 0;
     static SceCtrlData lpad;
     
-    sceCtrlReadBufferPositive(&pad, 1);
+    sceCtrlPeekBufferPositive(&pad, 1);
     
     if(pad.Buttons & PSP_CTRL_UP) { move++; }
     if(pad.Buttons & PSP_CTRL_DOWN) { move--; }
@@ -370,15 +334,28 @@ static u64 controls() {
     return getOffset(move, rotate);
 }
 
+u8 getPower(u16 value) {
+    u8 power = 0;
+    while(value > 1) {
+        if((value & 1) != 0) {
+            return 0;
+        }
+        power++;
+        value >>= 1;
+    }
+    return power;
+}
+    
 void getOptions() {
     FILE* f = fopen("options.txt", "r");
     if(f != NULL) {
         char* options = (char*)memalign(16, 32);
         fgets(options, 32, f);
-        sscanf(options, "%f %u %u %u",
+        sscanf(options, "%f %u %u %u %u",
             &MAX_PROJECTION_DEPTH,
             &ATOMIC_POV_COUNT,
             &RAY_STEP,
+            &WIDTH_BLOCK_COUNT,
             &DEPTH_BLOCK_COUNT);
         fclose(f);
     }
@@ -399,6 +376,7 @@ int main() {
     FRAME_BYTES_COUNT = WIN_PIXELS_COUNT * sizeof(u32);
     SPACE_BYTES_COUNT = ((DEPTH_BLOCK_COUNT * SPACE_BLOCK_SIZE) / RAY_STEP) * FRAME_BYTES_COUNT;    
     TEXTURE_WIDTH = TEXTURE_BLOCK_SIZE * WIDTH_BLOCK_COUNT;
+    SPACE_Y_OFFSET = getPower(TEXTURE_WIDTH);
 
     u8* zpos = memalign(16, WIN_PIXELS_COUNT);
     u32* base = memalign(16, FRAME_BYTES_COUNT);
@@ -410,6 +388,7 @@ int main() {
         preCalculate();
     }
     
+    generateRenderSurface();
     preCalcDof();
     sceGuInit();
     initGuContext(list);
@@ -438,7 +417,7 @@ int main() {
         
         sceGuTexImage(0, TEXTURE_WIDTH, TEXTURE_BLOCK_SIZE, TEXTURE_WIDTH, base);
         sceGumDrawArray(GU_TRIANGLES, GU_TEXTURE_16BIT|GU_COLOR_8888|
-		GU_TRANSFORM_2D|GU_VERTEX_16BIT, 48, 0, quad);
+		GU_TRANSFORM_2D|GU_VERTEX_16BIT, VERTICES_COUNT, 0, quad);
         
         size = sceGuFinish();
         sceGuSync(GU_SYNC_FINISH, GU_SYNC_WHAT_DONE);
@@ -455,6 +434,7 @@ int main() {
         fps = tickResolution / (now - prev);
     } while(!(pad.Buttons & PSP_CTRL_SELECT));
     
+    free(quad);
     free(list);
     free(zpos);
     free(base);
