@@ -168,7 +168,7 @@ static void initGuContext(void* list) {
     sceGuDispBuffer(SCREEN_WIDTH, SCREEN_HEIGHT, (void*)(sizeof(u32) *
     BUFFER_WIDTH * SCREEN_HEIGHT) , BUFFER_WIDTH);
     
-    sceGuClearColor(0xFF000000);
+    sceGuClearColor(0xFF303030);
     sceGuDisable(GU_SCISSOR_TEST);
     sceGuEnable(GU_CULL_FACE);
     sceGuFrontFace(GU_CW);
@@ -315,7 +315,7 @@ static u64 controls() {
     static int rotate = 0;
     static SceCtrlData lpad;
     
-    sceCtrlPeekBufferPositive(&pad, 1);
+    sceCtrlReadBufferPositive(&pad, 1);
     
     if(pad.Buttons & PSP_CTRL_UP) { move++; }
     if(pad.Buttons & PSP_CTRL_DOWN) { move--; }
