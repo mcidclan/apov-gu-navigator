@@ -28,7 +28,7 @@ void sceDmacMemcpy(void *dst, const void *src, int size);
 typedef struct Vertex {
 	u16 u, v;
 	u16 x, y, z;
-} Vertex __attribute__((aligned(16)));
+} Vertex;
 
 #define S TEXTURE_BLOCK_SIZE
 #define P (S / 16)
@@ -36,7 +36,9 @@ typedef struct Vertex {
 
 #define CLUT_COLOR_COUNT 256
 #define CLUT_COLOR_LOAD_COUNT 216
-static u32 __attribute__((aligned(16))) clut[CLUT_COLOR_COUNT] = {0};
+static u32 __attribute__((aligned(16))) _clut[CLUT_COLOR_COUNT] = {0};
+u32* clut = NULL; 
+ 
 static u16 VERTICES_COUNT;
 static u16 TEXTURE_WIDTH;
 static Vertex* surface;
@@ -90,9 +92,11 @@ static void initGuContext(void* list) {
     sceGuTexWrap(GU_CLAMP, GU_CLAMP);
     sceGuEnable(GU_TEXTURE_2D);
     
+    clut = (u32*)(((u32)_clut)|0x40000000);
     sceGuClutLoad(CLUT_COLOR_COUNT / 8, clut);
     sceGuClutMode(GU_PSM_8888, 0, CLUT_COLOR_COUNT - 1, 0);    
     sceGuTexMode(GU_PSM_T8, 0, 0, 0);
+
     sceGuTexFunc(GU_TFX_REPLACE,GU_TCC_RGB);
     sceGuTexFilter(GU_NEAREST, GU_NEAREST);
     
@@ -196,7 +200,7 @@ void getOptions() {
     
     f = fopen("clut.bin", "rb");
     if(f != NULL) {
-        fread(clut, sizeof(u32), CLUT_COLOR_LOAD_COUNT, f);
+        fread(_clut, sizeof(u32), CLUT_COLOR_LOAD_COUNT, f);
         fclose(f);
     }
 }
