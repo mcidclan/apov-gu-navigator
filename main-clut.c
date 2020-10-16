@@ -35,9 +35,7 @@ typedef struct Vertex {
 #define T (S / 16)
 
 #define CLUT_COLOR_COUNT 256
-#define CLUT_COLOR_LOAD_COUNT 216
-static u32 __attribute__((aligned(16))) _clut[CLUT_COLOR_COUNT] = {0};
-u32* clut = NULL; 
+static u32 __attribute__((aligned(16))) clut[CLUT_COLOR_COUNT] = {0};
  
 static u16 VERTICES_COUNT;
 static u16 TEXTURE_WIDTH;
@@ -83,7 +81,7 @@ static void initGuContext(void* list) {
     sceGuDispBuffer(SCREEN_WIDTH, SCREEN_HEIGHT, (void*)(sizeof(u32) *
     BUFFER_WIDTH * SCREEN_HEIGHT) , BUFFER_WIDTH);
     
-    sceGuClearColor(0xFF303030);
+    sceGuClearColor(0xFF000000);
     sceGuDisable(GU_SCISSOR_TEST);
     sceGuEnable(GU_CULL_FACE);
     sceGuFrontFace(GU_CW);
@@ -91,13 +89,13 @@ static void initGuContext(void* list) {
 
     sceGuTexWrap(GU_CLAMP, GU_CLAMP);
     sceGuEnable(GU_TEXTURE_2D);
+    sceGuTexMode(GU_PSM_8888, 0, 0, 0);
     
-    clut = (u32*)(((u32)_clut)|0x40000000);
     sceGuClutLoad(CLUT_COLOR_COUNT / 8, clut);
-    sceGuClutMode(GU_PSM_8888, 0, CLUT_COLOR_COUNT - 1, 0);    
+    sceGuClutMode(GU_PSM_8888, 0, CLUT_COLOR_COUNT - 1, 0); 
     sceGuTexMode(GU_PSM_T8, 0, 0, 0);
 
-    sceGuTexFunc(GU_TFX_REPLACE,GU_TCC_RGB);
+    sceGuTexFunc(GU_TFX_REPLACE, GU_TCC_RGB);
     sceGuTexFilter(GU_NEAREST, GU_NEAREST);
     
     sceGuDisplay(GU_TRUE);
@@ -113,7 +111,7 @@ static void openCloseIo(const u8 open) {
 }
 
 
-static u8 readIo(u32* const frame, const u64 offset) {
+static u8 readIo(u8* const frame, const u64 offset) {
     static u64 loffset = -1;
     if(offset != loffset) {
         sceIoLseek(f, offset, SEEK_SET);
@@ -128,9 +126,9 @@ static u8 readIo(u32* const frame, const u64 offset) {
     return 0;
 }
 
-void updateView(u32* const frame, u32* const base) {
+void updateView(u8* const frame, u8* const base) {
     sceKernelDcacheWritebackAll();
-    sceDmacMemcpy(base, frame, FRAME_INDICES_COUNT);
+    sceDmacMemcpy(base, frame, FRAME_INDICES_COUNT);    
 }
 
 static int ajustCursor(const int value, const u8 mode) {
@@ -200,7 +198,7 @@ void getOptions() {
     
     f = fopen("clut.bin", "rb");
     if(f != NULL) {
-        fread(_clut, sizeof(u32), CLUT_COLOR_LOAD_COUNT, f);
+        fread(clut, sizeof(u32), CLUT_COLOR_COUNT, f);
         fclose(f);
     }
 }
@@ -215,8 +213,8 @@ int main() {
     SPACE_INDICES_COUNT = ((DEPTH_BLOCK_COUNT * SPACE_BLOCK_SIZE) / RAY_STEP) * FRAME_INDICES_COUNT;    
     TEXTURE_WIDTH = TEXTURE_BLOCK_SIZE * WIDTH_BLOCK_COUNT;
 
-    u32* base = memalign(16, FRAME_INDICES_COUNT);
-    u32* frame = memalign(16, FRAME_INDICES_COUNT);
+    u8* base = memalign(16, FRAME_INDICES_COUNT);
+    u8* frame = memalign(16, FRAME_INDICES_COUNT);
     void* list = memalign(16, 262144);
     
     generateRenderSurface();
