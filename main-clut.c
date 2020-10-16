@@ -252,6 +252,7 @@ int main() {
         pspDebugScreenSetTextColor(0xFF00A0FF);
         pspDebugScreenPrintf("Fps: %llu\n", fps);
         
+        sceDisplayWaitVblankStart(); 
         dbuff = (int)sceGuSwapBuffers();
         
         sceRtcGetCurrentTick(&now);
