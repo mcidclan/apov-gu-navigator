@@ -67,7 +67,8 @@ void generateRenderSurface() {
 static u32 WIDTH_BLOCK_COUNT = 1;
 static u32 DEPTH_BLOCK_COUNT = 1;
 static u32 RAY_STEP = 1;
-static u32 ATOMIC_POV_COUNT = 4;
+static u32 HORIZONTAL_POV_COUNT = 4;
+static u32 VERTICAL_POV_COUNT = 1;
 static u16 WIN_WIDTH;
 static u16 WIN_HEIGHT = SPACE_BLOCK_SIZE;
 static u32 WIN_PIXELS_COUNT;
@@ -89,7 +90,6 @@ static void initGuContext(void* list) {
 
     sceGuTexWrap(GU_CLAMP, GU_CLAMP);
     sceGuEnable(GU_TEXTURE_2D);
-    sceGuTexMode(GU_PSM_8888, 0, 0, 0);
     
     sceGuClutLoad(CLUT_COLOR_COUNT / 8, clut);
     sceGuClutMode(GU_PSM_8888, 0, CLUT_COLOR_COUNT - 1, 0); 
@@ -128,7 +128,7 @@ static u8 readIo(u8* const frame, const u64 offset) {
 
 void updateView(u8* const frame, u8* const base) {
     sceKernelDcacheWritebackAll();
-    sceDmacMemcpy(base, frame, FRAME_INDICES_COUNT);    
+    sceDmacMemcpy(base, frame, FRAME_INDICES_COUNT);
 }
 
 static int ajustCursor(const int value, const u8 mode) {
@@ -139,36 +139,46 @@ static int ajustCursor(const int value, const u8 mode) {
         } else if(value >= (max = (SPACE_BLOCK_SIZE * DEPTH_BLOCK_COUNT) / RAY_STEP)) {
             return max - 1;
         }
-    } else {    
+    } else if(mode == 1) {   
         if(value < 0) {
-            return ATOMIC_POV_COUNT - 1;
-        } else if(value >= ATOMIC_POV_COUNT) {
+            return HORIZONTAL_POV_COUNT - 1;
+        } else if(value >= HORIZONTAL_POV_COUNT) {
+            return 0;
+        }
+    } else if(mode == 2) {   
+        if(value < 0) {
+            return VERTICAL_POV_COUNT - 1;
+        } else if(value >= VERTICAL_POV_COUNT) {
             return 0;
         }
     }
     return value;
 }
 
-static u64 getOffset(const int move, const int rotate) {
-    return FRAME_INDICES_COUNT * move + SPACE_INDICES_COUNT * rotate;
+static u64 getOffset(const int move, const int hrotate, const int vrotate) {
+    return FRAME_INDICES_COUNT * move + (hrotate * VERTICAL_POV_COUNT + vrotate) * SPACE_INDICES_COUNT;
 }
 
 SceCtrlData pad;
 static u64 controls() {
     static int move = 0;
-    static int rotate = 0;
+    static int hrotate = 0;
+    static int vrotate = 0;
     
     sceCtrlReadBufferPositive(&pad, 1);
     
-    if(pad.Buttons & PSP_CTRL_UP) { move++; }
-    if(pad.Buttons & PSP_CTRL_DOWN) { move--; }
-    if(pad.Buttons & PSP_CTRL_LEFT) { rotate--; }
-    if(pad.Buttons & PSP_CTRL_RIGHT) { rotate++; }
+    if(pad.Buttons & PSP_CTRL_TRIANGLE) { move++; }
+    if(pad.Buttons & PSP_CTRL_CROSS) { move--; }
+    if(pad.Buttons & PSP_CTRL_LEFT) { hrotate--; }
+    if(pad.Buttons & PSP_CTRL_RIGHT) { hrotate++; }
+    if(pad.Buttons & PSP_CTRL_DOWN) { vrotate--; }
+    if(pad.Buttons & PSP_CTRL_UP) { vrotate++; }
     
     move = ajustCursor(move, 0);
-    rotate = ajustCursor(rotate, 1);
+    hrotate = ajustCursor(hrotate, 1);
+    vrotate = ajustCursor(vrotate, 2);
     
-    return getOffset(move, rotate);
+    return getOffset(move, hrotate, vrotate);
 }
 
 u8 getPower(u16 value) {
@@ -186,14 +196,16 @@ u8 getPower(u16 value) {
 void getOptions() {
     FILE* f = fopen("options.txt", "r");
     if(f != NULL) {
-        char* options = (char*)memalign(16, 32);
-        fgets(options, 32, f);
-        sscanf(options, "%u %u %u %u",
-            &ATOMIC_POV_COUNT,
+        char* options = (char*)memalign(16, 128);
+        fgets(options, 128, f);
+        sscanf(options, "HPOV:%u VPOV:%u RAYSTEP:%u WBCOUNT:%u DBCOUNT:%u",
+            &HORIZONTAL_POV_COUNT,
+            &VERTICAL_POV_COUNT,
             &RAY_STEP,
             &WIDTH_BLOCK_COUNT,
             &DEPTH_BLOCK_COUNT);
         fclose(f);
+        free(options);
     }
     
     f = fopen("clut.bin", "rb");
