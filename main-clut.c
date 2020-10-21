@@ -169,10 +169,10 @@ static u64 controls() {
     
     if(pad.Buttons & PSP_CTRL_TRIANGLE) { move++; }
     if(pad.Buttons & PSP_CTRL_CROSS) { move--; }
-    if(pad.Buttons & PSP_CTRL_LEFT) { hrotate--; }
-    if(pad.Buttons & PSP_CTRL_RIGHT) { hrotate++; }
-    if(pad.Buttons & PSP_CTRL_DOWN) { vrotate--; }
-    if(pad.Buttons & PSP_CTRL_UP) { vrotate++; }
+    if(pad.Buttons & PSP_CTRL_RIGHT) { hrotate--; }
+    if(pad.Buttons & PSP_CTRL_LEFT) { hrotate++; }
+    if(pad.Buttons & PSP_CTRL_UP) { vrotate--; }
+    if(pad.Buttons & PSP_CTRL_DOWN) { vrotate++; }
     
     move = ajustCursor(move, 0);
     hrotate = ajustCursor(hrotate, 1);

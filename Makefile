@@ -2,7 +2,7 @@ TARGET = APoV
 OBJS = main.o dma.o
 CFLAGS = -g0 -O0 -Wall
 EXTRA_TARGETS = EBOOT.PBP
-LIBS = -lpspgum -lpspgu -lpsprtc -lpsppower
+LIBS = -lm -lpspgum -lpspgu -lpsprtc -lpsppower
 PSP_EBOOT_TITLE = APoV Gu
 
 all: $(OBJS) dma.o
