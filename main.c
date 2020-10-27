@@ -189,7 +189,7 @@ static void initGuContext(void* list) {
 static SceUID f;
 static void openCloseIo(const u8 open) {
     if(open) {
-        f = sceIoOpen("atoms-done.bin", PSP_O_RDONLY, 0777);
+        f = sceIoOpen("atoms.apov", PSP_O_RDONLY, 0777);
     } else sceIoClose(f);
 }
 
