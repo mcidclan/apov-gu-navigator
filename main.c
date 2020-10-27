@@ -72,6 +72,7 @@ void generateRenderSurface() {
 
 #define SPACE_BLOCK_SIZE 256
 static u8 DEPTH_OF_FIELD = 0;
+static u32 HEADER_SIZE = 0;
 static u32 WIDTH_BLOCK_COUNT = 1;
 static u32 DEPTH_BLOCK_COUNT = 1;
 static u32 RAY_STEP = 1;
@@ -313,7 +314,7 @@ static int ajustCursor(const int value, const u8 mode) {
 }
 
 static u64 getOffset(const int move, const int hrotate, const int vrotate) {
-    return FRAME_BYTES_COUNT * move + (hrotate * VERTICAL_POV_COUNT + vrotate) * SPACE_BYTES_COUNT;
+    return HEADER_SIZE + FRAME_BYTES_COUNT * move + (hrotate * VERTICAL_POV_COUNT + vrotate) * SPACE_BYTES_COUNT;
 }
 
 SceCtrlData pad;
@@ -363,13 +364,14 @@ void getOptions() {
     if(f != NULL) {
         char* options = (char*)memalign(16, 128);
         fgets(options, 128, f);
-        sscanf(options, "MPDEPTH:%f HPOV:%u VPOV:%u RAYSTEP:%u WBCOUNT:%u DBCOUNT:%u",
+        sscanf(options, "MPDEPTH:%f HPOV:%u VPOV:%u RAYSTEP:%u WBCOUNT:%u DBCOUNT:%u HSIZE:%u",
             &MAX_PROJECTION_DEPTH,
             &HORIZONTAL_POV_COUNT,
             &VERTICAL_POV_COUNT,
             &RAY_STEP,
             &WIDTH_BLOCK_COUNT,
-            &DEPTH_BLOCK_COUNT);
+            &DEPTH_BLOCK_COUNT,
+            &HEADER_SIZE);
         fclose(f);
         free(options);
     }
