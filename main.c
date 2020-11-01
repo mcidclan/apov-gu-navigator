@@ -339,7 +339,7 @@ static u64 controls() {
     vrotate = ajustCursor(vrotate, 2);
     
     if((pad.Buttons & PSP_CTRL_SQUARE) &&
-        !(lpad.Buttons & PSP_CTRL_TRIANGLE)) {
+        !(lpad.Buttons & PSP_CTRL_SQUARE)) {
         DEPTH_OF_FIELD = !DEPTH_OF_FIELD;
     }
     
