@@ -239,7 +239,7 @@ int main() {
     openCloseIo(1);
     
     int dbuff = 0;
-    u64 prev, now, fps;
+    u64 prev, now, fps = 0;
     const u64 tickResolution = sceRtcGetTickResolution();
 
     do {
