@@ -80,6 +80,8 @@ void generateRenderSurface() {
     }
 }
 
+static u8 MODE = 0;
+
 static u16 WIN_WIDTH;
 static u16 WIN_HEIGHT;
 static u32 WIN_PIXELS_COUNT;
@@ -129,8 +131,8 @@ static void openData() {
 static void closeData() {
     sceIoClose(f);
 }
+static u64 loffset = -1;
 static u8 readData(u8* const frame, const u64 offset) {
-    static u64 loffset = -1;
     if(offset != loffset) {
         const u64 nbytes = WIN_BYTES_COUNT + MAP_BYTES_COUNT;
         sceIoLseek(f, offset + HEADER_BYTES_COUNT, SEEK_SET);
@@ -181,44 +183,55 @@ void cache() {
     }
 }
 
-void updateView(u8* const frame, u32* const map, u32* const base) {    
-    u32 i = 0;
-    while(i < WIN_PIXELS_COUNT) {
-        Cached* const cache = &(cached[i]);
-        if(frame[cache->moff] & cache->mask) {
-            u32 b, c;
-            const u32 a = map[cache->midx];
-            
-            if(cache->hcka) {
-                b = map[cache->hoa];
-            } else if(cache->hckb) {
-                b = map[cache->hob];
-            } else b = 0;
-            
-            if(cache->vcka) {
-                c = map[cache->voa];
-            } else if(cache->vckb) {
-                c = map[cache->vob];
-            } else c = 0;
-           
-            const u8 R = (u8)(
-                ((a & 0xFF) * cache->fa) +
-                ((b & 0xFF) * cache->fb) +
-                ((c & 0xFF) * cache->fc));
-            
-            const u8 G = (u8)(
-                (((a >> 8) & 0xFF) * cache->fa) +
-                (((b >> 8) & 0xFF) * cache->fb) +
-                (((c >> 8) & 0xFF) * cache->fc));
-            
-            const u8 B = (u8)(
-                (((a >> 16) & 0xFF) * cache->fa) +
-                (((b >> 16) & 0xFF) * cache->fb) +
-                (((c >> 16) & 0xFF) * cache->fc));
+void updateView(u8* const frame, u32* const map, u32* const base) {
+    if(MODE == 0) {
+        u32 i = 0;
+        while(i < WIN_PIXELS_COUNT) {
+            Cached* const cache = &(cached[i]);
+            if(frame[cache->moff] & cache->mask) {
+                base[i] = map[cache->midx] | 0xFF << 24;
+            } else base[i] = 0x00;
+            i++;
+        }
+    } else if(MODE == 1) {
+        u32 i = 0;
+        while(i < WIN_PIXELS_COUNT) {
+            Cached* const cache = &(cached[i]);
+            if(frame[cache->moff] & cache->mask) {
+                u32 b, c;
+                const u32 a = map[cache->midx];
+                
+                if(cache->hcka) {
+                    b = map[cache->hoa];
+                } else if(cache->hckb) {
+                    b = map[cache->hob];
+                } else b = 0;
+                
+                if(cache->vcka) {
+                    c = map[cache->voa];
+                } else if(cache->vckb) {
+                    c = map[cache->vob];
+                } else c = 0;
+               
+                const u8 R = (u8)(
+                    ((a & 0xFF) * cache->fa) +
+                    ((b & 0xFF) * cache->fb) +
+                    ((c & 0xFF) * cache->fc));
+                
+                const u8 G = (u8)(
+                    (((a >> 8) & 0xFF) * cache->fa) +
+                    (((b >> 8) & 0xFF) * cache->fb) +
+                    (((c >> 8) & 0xFF) * cache->fc));
+                
+                const u8 B = (u8)(
+                    (((a >> 16) & 0xFF) * cache->fa) +
+                    (((b >> 16) & 0xFF) * cache->fb) +
+                    (((c >> 16) & 0xFF) * cache->fc));
 
-            base[i] = R | G << 8 | B << 16 | 0xFF << 24;
-        } else base[i] = 0x00;
-        i++;
+                base[i] = R | G << 8 | B << 16 | 0xFF << 24;
+            } else base[i] = 0x00;
+            i++;
+        }
     }
 }
 
@@ -258,6 +271,7 @@ static u64 controls() {
     static int move = 0;
     static int hrotate = 0;
     static int vrotate = 0;
+    static SceCtrlData lpad;
     
     sceCtrlReadBufferPositive(&pad, 1);
     
@@ -271,6 +285,13 @@ static u64 controls() {
     move = ajustCursor(move, 0);
     hrotate = ajustCursor(hrotate, 1);
     vrotate = ajustCursor(vrotate, 2);
+    
+    if((pad.Buttons & PSP_CTRL_SQUARE) &&
+        !(lpad.Buttons & PSP_CTRL_SQUARE)) {
+        MODE = (MODE + 1) % 2;
+        loffset = -1;
+    }
+    lpad = pad;
     
     return getOffset(move, hrotate, vrotate);
 }
@@ -361,7 +382,7 @@ int main() {
         pspDebugScreenSetOffset(dbuff);
         pspDebugScreenSetXY(0, 0);
         pspDebugScreenSetTextColor(0xFF00A0FF);
-        pspDebugScreenPrintf("Fps: %llu, lsize: %d\n", fps);
+        pspDebugScreenPrintf("Fps: %llu\n", fps);
         
         sceDisplayWaitVblankStart(); 
         dbuff = (int)sceGuSwapBuffers();
