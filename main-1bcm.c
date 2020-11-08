@@ -148,9 +148,8 @@ static u8 readData(u8* const frame, u32* const map, const cu64 offsets) {
 }
 
 void updateView(u8* const frame, u32* const map, u32* const base) {
-    memset(base, 0x00, BASE_BYTES_COUNT);
-    
-    /*u16 x = 0;
+    memset(base, 0x00, BASE_BYTES_COUNT);     
+    u16 x = 0;
     while(x < WIN_WIDTH) {
         u16 y = 0;
         while(y < WIN_HEIGHT) {
@@ -158,26 +157,55 @@ void updateView(u8* const frame, u32* const map, u32* const base) {
             const u8 slot = (i % 8);
             const u32 offset = (i / 8);
             if(frame[offset] & (0b1 << slot)) {
-                base[i] = map[(x / MAP_WIDTH_SCALE) +
-                    (y / MAP_HEIGHT_SCALE) * MAP_WIDTH];
+                float fx = (((float)x) / MAP_WIDTH_SCALE);
+                float fy = (((float)y) / MAP_HEIGHT_SCALE);
+                u16 ux = fx;
+                u16 uy = fy;
+                
+                const u32 _uy = uy * MAP_WIDTH;
+                
+                u32 b, c;
+                const u32 a = map[ux + _uy];
+                const float hc = (fx - ux) - 0.5f;
+                const float vc = (fy - uy) - 0.5f;
+                
+                float fb = (hc < 0.0f ? -hc : hc);
+                float fc = (vc < 0.0f ? -vc : vc);
+                const float fa = 1.0f - (fb + fc);
+                
+                if(hc < 0.0f) {
+                    b = ux > 0 ? map[(ux - 1) + _uy] : 0;
+                } else b = ux < (MAP_WIDTH - 1) ? map[(ux + 1) + _uy] : 0;
+                
+                if(vc < 0.0f) {
+                    c = _uy > 0 ? map[ux + (_uy - MAP_WIDTH)] : 0;
+                } else {
+                    c = _uy < MAP_WIDTH * (MAP_HEIGHT - 1) ?
+                    map[ux + _uy + MAP_WIDTH] : 0;
+                }
+               
+                const u8 R = (u8)((
+                    ((a & 0xFF) * fa) +
+                    ((b & 0xFF) * fb) +
+                    ((c & 0xFF) * fc)));
+                
+                const u8 G = (u8)((
+                    (((a >> 8) & 0xFF) * fa) +
+                    (((b >> 8) & 0xFF) * fb) +
+                    (((c >> 8) & 0xFF) * fc)));
+                
+                const u8 B = (u8)((
+                    (((a >> 16) & 0xFF) * fa) +
+                    (((b >> 16) & 0xFF) * fb) +
+                    (((c >> 16) & 0xFF) * fc)));
+
+                base[i] = R | G << 8 | B << 16 | 0xFF << 24;
             }
             y++;
         }
         x++;
-    }*/
-    
-    u32 i = 0;
-    while(i < WIN_PIXELS_COUNT) {
-        const u8 slot = (i % 8);
-        const u32 offset = (i / 8);
-        if(frame[offset] & (0b1 << slot)) {
-            const u16 x = (i % WIN_WIDTH) / MAP_WIDTH_SCALE;
-            const u16 y = (i / WIN_HEIGHT) / MAP_HEIGHT_SCALE;
-            base[i] = map[x + y * MAP_WIDTH];
-        }
-        i++;
     }
-}    
+}
 
 static int ajustCursor(const int value, const u8 mode) {
     if(!mode) {
