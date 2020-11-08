@@ -27,9 +27,15 @@ PSP_HEAP_SIZE_KB(-1024);
 
 void sceDmacMemcpy(void *dst, const void *src, int size);
 
-typedef struct cu64 {
-    u64 a, b;
-} cu64;
+typedef struct Cached {
+    u32 slotMask;
+    u32 offset;
+    float fx;
+    float fy;
+    u32 ux;
+    u32 uy;
+    u32 _uy;
+} Cached;
 
 typedef struct Vertex {
 	u16 u, v;
@@ -47,8 +53,8 @@ typedef struct Options {
 } Options;
 
 #define S TEXTURE_BLOCK_SIZE
-#define P (S / 16)
-#define T (S / 16)
+#define P (S / 32)
+#define T (S / 32)
     
 static u16 VERTICES_COUNT;
 static u16 TEXTURE_WIDTH;
@@ -119,91 +125,102 @@ static void initGuContext(void* list) {
     sceGuSync(GU_SYNC_FINISH, GU_SYNC_WHAT_DONE);
 }
 
-static SceUID fa, fb;
+static SceUID f;
 static void openData() {
-    fa = sceIoOpen("atoms.apov", PSP_O_RDONLY, 0777);
-    fb = sceIoOpen("map.apov", PSP_O_RDONLY, 0777);
+    f = sceIoOpen("atoms.apov", PSP_O_RDONLY, 0777);
 }
 static void closeData() {
-    sceIoClose(fa);
-    sceIoClose(fb);
+    sceIoClose(f);
 }
-static u8 readData(u8* const frame, u32* const map, const cu64 offsets) {
+static u8 readData(u8* const frame, const u64 offset) {
     static u64 loffset = -1;
-    if(offsets.a != loffset) {
-        sceIoLseek(fa, offsets.a + HEADER_BYTES_COUNT, SEEK_SET);
-        if(WIN_BYTES_COUNT != sceIoRead(fa, frame, WIN_BYTES_COUNT)) {
+    if(offset != loffset) {
+        const u64 nbytes = WIN_BYTES_COUNT + MAP_BYTES_COUNT;
+        sceIoLseek(f, offset + HEADER_BYTES_COUNT, SEEK_SET);
+        if(nbytes != sceIoRead(f, frame, nbytes)) {
             openData();
             return 0;
         }
-        sceIoLseek(fb, offsets.b, SEEK_SET);
-        if(MAP_BYTES_COUNT != sceIoRead(fb, map, MAP_BYTES_COUNT)) {
-            openData();
-            return 0;
-        }
-        loffset = offsets.a;
+        loffset = offset;
         return 1;
     }
     return 0;
 }
 
-void updateView(u8* const frame, u32* const map, u32* const base) {
-    memset(base, 0x00, BASE_BYTES_COUNT);     
+Cached* cached = NULL;
+
+void cache() {
+    cached = memalign(16, WIN_PIXELS_COUNT * sizeof(Cached));
     u16 x = 0;
     while(x < WIN_WIDTH) {
         u16 y = 0;
         while(y < WIN_HEIGHT) {
             const u32 i = x + y * WIN_WIDTH;
-            const u8 slot = (i % 8);
-            const u32 offset = (i / 8);
-            if(frame[offset] & (0b1 << slot)) {
-                float fx = (((float)x) / MAP_WIDTH_SCALE);
-                float fy = (((float)y) / MAP_HEIGHT_SCALE);
-                u16 ux = fx;
-                u16 uy = fy;
-                
-                const u32 _uy = uy * MAP_WIDTH;
-                
-                u32 b, c;
-                const u32 a = map[ux + _uy];
-                const float hc = (fx - ux) - 0.5f;
-                const float vc = (fy - uy) - 0.5f;
-                
-                float fb = (hc < 0.0f ? -hc : hc);
-                float fc = (vc < 0.0f ? -vc : vc);
-                const float fa = 1.0f - (fb + fc);
-                
-                if(hc < 0.0f) {
-                    b = ux > 0 ? map[(ux - 1) + _uy] : 0;
-                } else b = ux < (MAP_WIDTH - 1) ? map[(ux + 1) + _uy] : 0;
-                
-                if(vc < 0.0f) {
-                    c = _uy > 0 ? map[ux + (_uy - MAP_WIDTH)] : 0;
-                } else {
-                    c = _uy < MAP_WIDTH * (MAP_HEIGHT - 1) ?
-                    map[ux + _uy + MAP_WIDTH] : 0;
-                }
-               
-                const u8 R = (u8)((
-                    ((a & 0xFF) * fa) +
-                    ((b & 0xFF) * fb) +
-                    ((c & 0xFF) * fc)));
-                
-                const u8 G = (u8)((
-                    (((a >> 8) & 0xFF) * fa) +
-                    (((b >> 8) & 0xFF) * fb) +
-                    (((c >> 8) & 0xFF) * fc)));
-                
-                const u8 B = (u8)((
-                    (((a >> 16) & 0xFF) * fa) +
-                    (((b >> 16) & 0xFF) * fb) +
-                    (((c >> 16) & 0xFF) * fc)));
-
-                base[i] = R | G << 8 | B << 16 | 0xFF << 24;
-            }
+            const float fx = ((float)x) / MAP_WIDTH_SCALE;
+            const float fy = ((float)y) / MAP_HEIGHT_SCALE;
+            const u32 ux = fx;
+            const u32 uy = fy;
+            const u32 _uy = uy * MAP_WIDTH;
+            const Cached c = {
+                0b1 << (i % 8),
+                i / 8,
+                fx,
+                fy,
+                ux,
+                uy,
+                _uy
+            };
+            cached[i] = c;
             y++;
         }
         x++;
+    }
+}
+
+void updateView(u8* const frame, u32* const map, u32* const base) {    
+    u32 i = 0;
+    while(i < WIN_PIXELS_COUNT) {
+        Cached* const cache = &(cached[i]);
+        if(frame[cache->offset] & cache->slotMask) {
+            u32 b, c;
+            const u32 a = map[cache->ux + cache->_uy];
+            const float hc = (cache->fx - cache->ux) - 0.5f;
+            const float vc = (cache->fy - cache->uy) - 0.5f;
+            const float fb = (hc < 0.0f ? -hc : hc);
+            const float fc = (vc < 0.0f ? -vc : vc);
+            const float fa = 1.0f - (fb + fc);
+            
+            if(hc < 0.0f && cache->ux > 0) {
+                b = map[(cache->ux - 1) + cache->_uy];
+            } else if(hc >= 0.0f && cache->ux < (MAP_WIDTH - 1)) {
+                b = map[(cache->ux + 1) + cache->_uy];
+            } else b = 0;
+            
+            if(vc < 0.0f && cache->uy > 0) {
+                c = map[cache->ux + (cache->_uy - MAP_WIDTH)];
+            } else if(vc >= 0.0f && cache->uy < (MAP_HEIGHT - 1)) {
+                c = map[cache->ux + cache->_uy + MAP_WIDTH];
+            } else c = 0;
+           
+            const u8 R = (u8)(
+                ((a & 0xFF) * fa) +
+                ((b & 0xFF) * fb) +
+                ((c & 0xFF) * fc));
+            
+            const u8 G = (u8)(
+                (((a >> 8) & 0xFF) * fa) +
+                (((b >> 8) & 0xFF) * fb) +
+                (((c >> 8) & 0xFF) * fc));
+            
+            const u8 B = (u8)(
+                (((a >> 16) & 0xFF) * fa) +
+                (((b >> 16) & 0xFF) * fb) +
+                (((c >> 16) & 0xFF) * fc));
+
+            base[i] = R | G << 8 | B << 16 | 0xFF << 24;
+            
+        } else base[i] = 0x00;
+        i++;
     }
 }
 
@@ -232,17 +249,14 @@ static int ajustCursor(const int value, const u8 mode) {
     return value;
 }
 
-static cu64 getOffset(const int move, const int hrotate, const int vrotate) {
+static u64 getOffset(const int move, const int hrotate, const int vrotate) {
     const u32 pov = (hrotate * options.VERTICAL_POV_COUNT + vrotate);
-    const cu64 offsets = {
-        WIN_BYTES_COUNT * move + pov * SPACE_BYTES_COUNT,
-        MAP_BYTES_COUNT * move + pov * MAP_VOLUME_BYTES_COUNT
-    };
-    return offsets;
+    return (WIN_BYTES_COUNT + MAP_BYTES_COUNT) * move +
+        pov * (SPACE_BYTES_COUNT + MAP_VOLUME_BYTES_COUNT);
 }
 
 SceCtrlData pad;
-static cu64 controls() {
+static u64 controls() {
     static int move = 0;
     static int hrotate = 0;
     static int vrotate = 0;
@@ -311,11 +325,12 @@ int main() {
     
     TEXTURE_WIDTH = TEXTURE_BLOCK_SIZE * options.WIDTH_BLOCK_COUNT;
     
-    u32* base = memalign(16, BASE_BYTES_COUNT);
-    u32* map = memalign(16, MAP_BYTES_COUNT);
-    u8* frame = memalign(16, WIN_BYTES_COUNT);
+    cache();
     
-    void* list = memalign(16, 262144); //
+    u32* base = memalign(16, BASE_BYTES_COUNT);
+    u8* frame = memalign(16, WIN_BYTES_COUNT + MAP_BYTES_COUNT);
+    
+    void* list = memalign(16, 256);
     
     generateRenderSurface();
     sceGuInit();
@@ -334,8 +349,8 @@ int main() {
         sceGuStart(GU_DIRECT, list);
         sceGuClear(GU_COLOR_BUFFER_BIT);
         
-        if(readData(frame, map, controls())) {
-            updateView(frame, map, base);
+        if(readData(frame, controls())) {
+            updateView(frame, (u32*)&frame[WIN_BYTES_COUNT], base);
         }
         
         sceGuTexImage(0, TEXTURE_WIDTH, TEXTURE_BLOCK_SIZE, TEXTURE_WIDTH, base);        
@@ -361,9 +376,8 @@ int main() {
     free(surface);
     free(list);
     free(base);
-    free(map);
     free(frame);
-    
+    free(cached);
     closeData();
     sceKernelExitGame();
     return 0;
