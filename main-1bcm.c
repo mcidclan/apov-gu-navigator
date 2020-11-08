@@ -28,14 +28,11 @@ PSP_HEAP_SIZE_KB(-1024);
 void sceDmacMemcpy(void *dst, const void *src, int size);
 
 typedef struct Cached {
-    u32 slotMask;
-    u32 offset;
-    float fx;
-    float fy;
-    u32 ux;
-    u32 uy;
-    u32 _uy;
-} Cached;
+    u32 mask, moff, midx;
+    float fa, fb, fc;
+    u32 hcka, hckb, vcka, vckb;
+    u32 hoa, hob, voa, vob;
+} Cached __attribute__((aligned(16)));
 
 typedef struct Vertex {
 	u16 u, v;
@@ -53,8 +50,8 @@ typedef struct Options {
 } Options;
 
 #define S TEXTURE_BLOCK_SIZE
-#define P (S / 32)
-#define T (S / 32)
+#define P (S / 16)
+#define T (S / 16)
     
 static u16 VERTICES_COUNT;
 static u16 TEXTURE_WIDTH;
@@ -148,8 +145,8 @@ static u8 readData(u8* const frame, const u64 offset) {
 }
 
 Cached* cached = NULL;
-
 void cache() {
+    Cached c;
     cached = memalign(16, WIN_PIXELS_COUNT * sizeof(Cached));
     u16 x = 0;
     while(x < WIN_WIDTH) {
@@ -160,16 +157,23 @@ void cache() {
             const float fy = ((float)y) / MAP_HEIGHT_SCALE;
             const u32 ux = fx;
             const u32 uy = fy;
-            const u32 _uy = uy * MAP_WIDTH;
-            const Cached c = {
-                0b1 << (i % 8),
-                i / 8,
-                fx,
-                fy,
-                ux,
-                uy,
-                _uy
-            };
+            const u32 uyb = uy * MAP_WIDTH;
+            const float hc = fx - ux - 0.5f;
+            const float vc = fy - uy - 0.5f;
+            c.mask = (0b1 << (i % 8));
+            c.moff = (i / 8);
+            c.midx = (ux + uyb);
+            c.fb = (hc < 0.0f ? -hc : hc);
+            c.fc = (vc < 0.0f ? -vc : vc);
+            c.fa = 1.0f - (c.fb + c.fc);
+            c.hoa = ux - 1 + uyb;
+            c.hob = ux + 1 + uyb;
+            c.voa = ux + uyb - MAP_WIDTH;
+            c.vob = ux + uyb + MAP_WIDTH;
+            c.hcka = hc < 0.0f && ux > 0 ? 1 : 0;
+            c.hckb = hc >= 0.0f && ux < (MAP_WIDTH - 1) ? 1 : 0;
+            c.vcka = vc < 0.0f && uy > 0 ? 1 : 0;
+            c.vckb = vc >= 0.0f && uy < (MAP_HEIGHT - 1 ) ? 1:0;
             cached[i] = c;
             y++;
         }
@@ -181,44 +185,38 @@ void updateView(u8* const frame, u32* const map, u32* const base) {
     u32 i = 0;
     while(i < WIN_PIXELS_COUNT) {
         Cached* const cache = &(cached[i]);
-        if(frame[cache->offset] & cache->slotMask) {
+        if(frame[cache->moff] & cache->mask) {
             u32 b, c;
-            const u32 a = map[cache->ux + cache->_uy];
-            const float hc = (cache->fx - cache->ux) - 0.5f;
-            const float vc = (cache->fy - cache->uy) - 0.5f;
-            const float fb = (hc < 0.0f ? -hc : hc);
-            const float fc = (vc < 0.0f ? -vc : vc);
-            const float fa = 1.0f - (fb + fc);
+            const u32 a = map[cache->midx];
             
-            if(hc < 0.0f && cache->ux > 0) {
-                b = map[(cache->ux - 1) + cache->_uy];
-            } else if(hc >= 0.0f && cache->ux < (MAP_WIDTH - 1)) {
-                b = map[(cache->ux + 1) + cache->_uy];
+            if(cache->hcka) {
+                b = map[cache->hoa];
+            } else if(cache->hckb) {
+                b = map[cache->hob];
             } else b = 0;
             
-            if(vc < 0.0f && cache->uy > 0) {
-                c = map[cache->ux + (cache->_uy - MAP_WIDTH)];
-            } else if(vc >= 0.0f && cache->uy < (MAP_HEIGHT - 1)) {
-                c = map[cache->ux + cache->_uy + MAP_WIDTH];
+            if(cache->vcka) {
+                c = map[cache->voa];
+            } else if(cache->vckb) {
+                c = map[cache->vob];
             } else c = 0;
            
             const u8 R = (u8)(
-                ((a & 0xFF) * fa) +
-                ((b & 0xFF) * fb) +
-                ((c & 0xFF) * fc));
+                ((a & 0xFF) * cache->fa) +
+                ((b & 0xFF) * cache->fb) +
+                ((c & 0xFF) * cache->fc));
             
             const u8 G = (u8)(
-                (((a >> 8) & 0xFF) * fa) +
-                (((b >> 8) & 0xFF) * fb) +
-                (((c >> 8) & 0xFF) * fc));
+                (((a >> 8) & 0xFF) * cache->fa) +
+                (((b >> 8) & 0xFF) * cache->fb) +
+                (((c >> 8) & 0xFF) * cache->fc));
             
             const u8 B = (u8)(
-                (((a >> 16) & 0xFF) * fa) +
-                (((b >> 16) & 0xFF) * fb) +
-                (((c >> 16) & 0xFF) * fc));
+                (((a >> 16) & 0xFF) * cache->fa) +
+                (((b >> 16) & 0xFF) * cache->fb) +
+                (((c >> 16) & 0xFF) * cache->fc));
 
             base[i] = R | G << 8 | B << 16 | 0xFF << 24;
-            
         } else base[i] = 0x00;
         i++;
     }
@@ -340,7 +338,7 @@ int main() {
     
     openData();
     
-    int dbuff = 0, size = 0;
+    int dbuff = 0;
     u64 prev, now, fps = 0;
     const u64 tickResolution = sceRtcGetTickResolution();
 
@@ -357,13 +355,13 @@ int main() {
         sceGumDrawArray(GU_SPRITES, GU_TEXTURE_16BIT|GU_TRANSFORM_2D|GU_VERTEX_16BIT,
         VERTICES_COUNT, 0, surface);
         
-        size = sceGuFinish();
+        sceGuFinish();
         sceGuSync(GU_SYNC_FINISH, GU_SYNC_WHAT_DONE);
         
         pspDebugScreenSetOffset(dbuff);
         pspDebugScreenSetXY(0, 0);
         pspDebugScreenSetTextColor(0xFF00A0FF);
-        pspDebugScreenPrintf("Fps: %llu, lsize: %d\n", fps, size);
+        pspDebugScreenPrintf("Fps: %llu, lsize: %d\n", fps);
         
         sceDisplayWaitVblankStart(); 
         dbuff = (int)sceGuSwapBuffers();
