@@ -175,7 +175,7 @@ void cache() {
             c.hcka = hc < 0.0f && ux > 0 ? 1 : 0;
             c.hckb = hc >= 0.0f && ux < (MAP_WIDTH - 1) ? 1 : 0;
             c.vcka = vc < 0.0f && uy > 0 ? 1 : 0;
-            c.vckb = vc >= 0.0f && uy < (MAP_HEIGHT - 1 ) ? 1:0;
+            c.vckb = vc >= 0.0f && uy < (MAP_HEIGHT - 1) ? 1:0;
             cached[i] = c;
             y++;
         }
@@ -200,7 +200,6 @@ void updateView(u8* const frame, u32* const map, u32* const base) {
             if(frame[cache->moff] & cache->mask) {
                 u32 b, c;
                 const u32 a = map[cache->midx];
-                
                 if(cache->hcka) {
                     b = map[cache->hoa];
                 } else if(cache->hckb) {
@@ -229,7 +228,45 @@ void updateView(u8* const frame, u32* const map, u32* const base) {
                     (((c >> 16) & 0xFF) * cache->fc));
 
                 base[i] = R | G << 8 | B << 16 | 0xFF << 24;
-            } else base[i] = 0x00;
+            } else {
+                const u16 x = i % WIN_WIDTH;
+                const u16 y = i / WIN_WIDTH;
+                if(x > 0 && x < (WIN_WIDTH - 1) &&
+                   y > 0 && y < (WIN_HEIGHT - 1)) {
+                    Cached* const ca = &(cached[i - 1]);
+                    Cached* const cb = &(cached[i + 1]);  
+                    Cached* const cc = &(cached[i - WIN_WIDTH]);
+                    Cached* const cd = &(cached[i + WIN_WIDTH]);
+                    Cached* const ce = &(cached[i - 1 - WIN_WIDTH]);
+                    Cached* const cf = &(cached[i - 1 + WIN_WIDTH]);  
+                    Cached* const cg = &(cached[i + 1 - WIN_WIDTH]);
+                    Cached* const ch = &(cached[i + 1 + WIN_WIDTH]);
+                    
+                    const u8 count =
+                        ((frame[ca->moff] & ca->mask) ? 1 : 0) +  
+                        ((frame[cb->moff] & cb->mask) ? 1 : 0) + 
+                        ((frame[cc->moff] & cc->mask) ? 1 : 0) + 
+                        ((frame[cd->moff] & cd->mask) ? 1 : 0) + 
+                        ((frame[ce->moff] & ce->mask) ? 1 : 0) + 
+                        ((frame[cf->moff] & cf->mask) ? 1 : 0) + 
+                        ((frame[cg->moff] & cg->mask) ? 1 : 0) + 
+                        ((frame[ch->moff] & ch->mask) ? 1 : 0);
+                       
+                    if(count >= 4) {
+                        const u32 a = map[ca->midx];
+                        const u32 b = map[cb->midx];
+                        const u32 c = map[cc->midx];
+                        const u32 d = map[cd->midx];
+                        const u8 R = ((a & 0xFF) + (b & 0xFF) + (c & 0xFF) + (d & 0xFF)) / 5;
+                        const u8 G = (((a >> 8) & 0xFF) + ((b >> 8) & 0xFF) + ((c >> 8) & 0xFF) + ((d >> 8) & 0xFF)) / 5;
+                        const u8 B = (((a >> 16) & 0xFF) + ((b >> 16) & 0xFF) + ((c >> 16) & 0xFF) + ((d >> 16) & 0xFF)) / 5;
+                        base[i] = R | G << 8 | B << 16 | 0xFF << 24;
+                        i++;
+                        continue;
+                    }
+                }
+                base[i] = 0x00;
+            }
             i++;
         }
     }
@@ -382,7 +419,7 @@ int main() {
         pspDebugScreenSetOffset(dbuff);
         pspDebugScreenSetXY(0, 0);
         pspDebugScreenSetTextColor(0xFF00A0FF);
-        pspDebugScreenPrintf("Fps: %llu\n", fps);
+        pspDebugScreenPrintf("Fps: %llu Smooth:%s\n", fps, MODE ? "On" : "Off");
         
         sceDisplayWaitVblankStart(); 
         dbuff = (int)sceGuSwapBuffers();
