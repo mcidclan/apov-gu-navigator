@@ -47,6 +47,7 @@ typedef struct Options {
     u32 WIDTH_BLOCK_COUNT;
     u32 DEPTH_BLOCK_COUNT;
     u32 COLOR_MAP_SIZE;
+    u32 TRACE_EDGES;
 } Options;
 
 #define S TEXTURE_BLOCK_SIZE
@@ -183,24 +184,26 @@ void cache() {
         x++;
     }
     
-    const u16 WIN_WIDTH_X2 = WIN_WIDTH * 2;
-    // Edges matrix
-    em[0] = -1;
-    em[1] = +1;
-    em[2] = -WIN_WIDTH;
-    em[3] = +WIN_WIDTH;
-    em[4] = -1-WIN_WIDTH;
-    em[5] = +1+WIN_WIDTH;
-    em[6] = -1+WIN_WIDTH;
-    em[7] = +1-WIN_WIDTH;
-    em[8] = -2;
-    em[9] = +2;
-    em[10] = -WIN_WIDTH_X2;
-    em[11] = +WIN_WIDTH_X2;
-    em[12] = -2-WIN_WIDTH_X2;
-    em[13] = +2+WIN_WIDTH_X2;
-    em[14] = -2+WIN_WIDTH_X2;
-    em[15] = +2-WIN_WIDTH_X2;
+    if(options.TRACE_EDGES) {
+        const u16 WIN_WIDTH_X2 = WIN_WIDTH * 2;
+        // Edges matrix
+        em[0] = -1;
+        em[1] = +1;
+        em[2] = -WIN_WIDTH;
+        em[3] = +WIN_WIDTH;
+        em[4] = -1-WIN_WIDTH;
+        em[5] = +1+WIN_WIDTH;
+        em[6] = -1+WIN_WIDTH;
+        em[7] = +1-WIN_WIDTH;
+        em[8] = -2;
+        em[9] = +2;
+        em[10] = -WIN_WIDTH_X2;
+        em[11] = +WIN_WIDTH_X2;
+        em[12] = -2-WIN_WIDTH_X2;
+        em[13] = +2+WIN_WIDTH_X2;
+        em[14] = -2+WIN_WIDTH_X2;
+        em[15] = +2-WIN_WIDTH_X2;
+    }
 }
  
 void updateView(u8* const frame, u32* const map, u32* const base) {
@@ -249,27 +252,29 @@ void updateView(u8* const frame, u32* const map, u32* const base) {
 
                 base[i] = R | G << 8 | B << 16 | 0xFF << 24;
             } else {
-                const u16 x = i % WIN_WIDTH;
-                const u16 y = i / WIN_WIDTH;
-                if(x >= 2 && x < (WIN_WIDTH - 2) &&
-                   y >= 2 && y < (WIN_HEIGHT - 2)) {
-                    u8 n = 0;
-                    while(n < 16) {
-                        Cached* const ca = &(cached[i + em[n]]);
-                        Cached* const cb = &(cached[i + em[n + 1]]);
-                        const u8 count =
-                            ((frame[ca->moff] & ca->mask) ? 1 : 0) +  
-                            ((frame[cb->moff] & cb->mask) ? 1 : 0);
-                        if(count == 2) {
-                            const u32 a = map[ca->midx];
-                            const u32 b = map[cb->midx];
-                            const u8 R = ((a & 0xFF) + (b & 0xFF)) / 2.5f;
-                            const u8 G = (((a >> 8) & 0xFF) + ((b >> 8) & 0xFF)) / 2.3f;
-                            const u8 B = (((a >> 16) & 0xFF) + ((b >> 16) & 0xFF)) / 2.3f;
-                            base[i] = R | G << 8 | B << 16 | 0xFF << 24;
-                            goto _continue;
+                if(options.TRACE_EDGES) {
+                    const u16 x = i % WIN_WIDTH;
+                    const u16 y = i / WIN_WIDTH;
+                    if(x >= 2 && x < (WIN_WIDTH - 2) &&
+                       y >= 2 && y < (WIN_HEIGHT - 2)) {
+                        u8 n = 0;
+                        while(n < 16) {
+                            Cached* const ca = &(cached[i + em[n]]);
+                            Cached* const cb = &(cached[i + em[n + 1]]);
+                            const u8 count =
+                                ((frame[ca->moff] & ca->mask) ? 1 : 0) +  
+                                ((frame[cb->moff] & cb->mask) ? 1 : 0);
+                            if(count == 2) {
+                                const u32 a = map[ca->midx];
+                                const u32 b = map[cb->midx];
+                                const u8 R = ((a & 0xFF) + (b & 0xFF)) / 2.5f;
+                                const u8 G = (((a >> 8) & 0xFF) + ((b >> 8) & 0xFF)) / 2.3f;
+                                const u8 B = (((a >> 16) & 0xFF) + ((b >> 16) & 0xFF)) / 2.3f;
+                                base[i] = R | G << 8 | B << 16 | 0xFF << 24;
+                                goto _continue;
+                            }
+                            n+=2;
                         }
-                        n+=2;
                     }
                 }
                 base[i] = 0x00;
