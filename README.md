@@ -33,12 +33,12 @@ HPOV:90 VPOV:1 RAYSTEP:4 WBCOUNT:1 DBCOUNT:1
 For the 1bcm version, build the main-1bcm with:
     make -f Makefile-1bcm clean; make -f Makefile-1bcm;
     
-You nee to generate the apov file as the following example:
+You need to generate the apov file as the following example:
     ./bin/apov space-block-size:256 vertical-pov-count:45 horizontal-pov-count:45 \
         ray-step:256 max-ray-depth:128 projection-depth:400 use-1bit-color-mapping \
         export-header color-map-size:8
 
-This options file is not needed.
+The options file is not needed.
 
 What is 1BCM?
 1BCM means "1 bit color mapping". The idea is to generate two frames which could
